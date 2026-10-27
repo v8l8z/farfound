@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Farfound Flight Plan</title>
+<meta name="description" content="A friend sent you a Farfound flight plan. Fly the same eight prompts and try to go further.">
+<link rel="icon" href="../icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Michroma&family=Space+Mono&display=swap">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<main class="wrap">
+  <a class="top" href="../"><img src="../icon.png" alt=""><span>FARFOUND</span></a>
+  <h1 id="title">Flight plan</h1>
+  <p class="lede" id="lede">A friend sent you a flight plan.</p>
+  <div id="plan" hidden>
+    <div class="panel">
+      <table class="board">
+        <thead><tr><th scope="col">Pilot</th><th scope="col">Reached</th><th scope="col">Thrust</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p>Fly the same eight prompts with their rocket's ghost beside yours. Their answers stay hidden until you've given yours.</p>
+    <div class="btns">
+      <a class="btn" id="open" href="farfound://plan">Open in Farfound</a>
+      <a class="btn btn-line" href="https://apps.apple.com/app/idAPP_STORE_ID">Get Farfound</a>
+    </div>
+    <p class="dim">Don't have Farfound yet? Get it from the App Store, then come back to this page and tap Open in Farfound.</p>
+  </div>
+  <div id="broken" hidden>
+    <p>This flight plan link looks incomplete. Ask whoever sent it to send it again.</p>
+    <div class="btns"><a class="btn" href="https://apps.apple.com/app/idAPP_STORE_ID">Get Farfound</a></div>
+  </div>
+  <footer>
+    <a href="../">Farfound</a>
+    <a href="../support/">Support</a>
+    <a href="../privacy/">Privacy policy</a>
+  </footer>
+</main>
+<script>
+(() => {
+  // the 31 stops from the game, and how much thrust each leg needs (see placeOf in farfound.js)
+  const STOPS = ['Launch Pad', 'Low Earth Orbit', 'The Moon', 'Mars', 'Phobos', 'Vesta', 'Ceres', 'Jupiter', 'Io', 'Europa', 'Ganymede', 'Saturn', 'Enceladus', 'Titan', 'Uranus', 'Neptune', 'Triton', 'Pluto', 'Arrokoth', 'Sedna', 'Eris', 'The Heliopause', 'The Oort Cloud', 'Proxima Centauri', 'Alpha Centauri', "Barnard's Star", 'Sirius', 'TRAPPIST-1', 'Betelgeuse', 'Orion Nebula', 'Galactic Centre', 'Andromeda'];
+  const ROW_FROM = { 1: 1, 2: 4, 17: 5, 22: 6, 28: 7 };
+  const AT = [0];
+  for (let i = 1, n = 0; i < STOPS.length; i++) { if (ROW_FROM[i] != null) n = ROW_FROM[i]; AT.push(AT[i - 1] + n); }
+  const placeOf = t => { let s = 0; while (s < STOPS.length - 1 && AT[s + 1] <= t) s++; return s; };
+
+  function decode(hash) {
+    let b64 = hash.replace(/^#/, '').replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+  const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+  function valid(p) {
+    return p && p.v === 1 && (p.day === null || /^\d{4}-\d{2}-\d{2}$/.test(p.day))
+      && Array.isArray(p.ids) && p.ids.length === 8 && p.ids.every(x => typeof x === 'string' && x.length < 16)
+      && Array.isArray(p.crew) && p.crew.length >= 1 && p.crew.length <= 8
+      && p.crew.every(c => c && typeof c.n === 'string' && Array.isArray(c.b) && c.b.length === 8
+        && c.b.every(b => Array.isArray(b) && int(b[0], -1, 5) && int(b[1], 0, 150)));
+  }
+  const prettyDay = k => new Date(k + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+  let plan = null;
+  try { plan = decode(location.hash); } catch (e) { plan = null; }
+  if (!valid(plan)) { document.getElementById('broken').hidden = false; document.getElementById('lede').textContent = 'Something is missing from this link.'; return; }
+
+  const crew = plan.crew.map(c => {
+    const thrust = Math.min(150, c.b.reduce((a, b) => a + b[1], 0));
+    return { name: c.n.trim().slice(0, 16) || 'A friend', thrust, stop: placeOf(thrust) };
+  });
+  const last = crew[crew.length - 1];
+  document.getElementById('title').textContent = `${last.name} reached ${STOPS[last.stop]}`;
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('lede').textContent = plan.day === today ? "This is today's flight. If you haven't flown it yet, this run counts as yours."
+    : plan.day ? `A flight from ${prettyDay(plan.day)}. Can you fly further?` : 'Can you fly further?';
+  const rows = document.getElementById('rows');
+  for (const c of crew.slice().sort((a, b) => b.thrust - a.thrust)) {
+    const tr = document.createElement('tr');
+    [['who', c.name], ['', STOPS[c.stop]], ['', String(c.thrust)]].forEach(([cls, text]) => {
+      const td = document.createElement('td');
+      if (cls) td.className = cls;
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+    rows.appendChild(tr);
+  }
+  document.getElementById('open').href = 'farfound://plan' + location.hash;
+  document.getElementById('plan').hidden = false;
+})();
+</script>
+</body>
+</html>
