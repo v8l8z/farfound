@@ -562,7 +562,12 @@
     unlock() {
       if (store.muted) return;
       try {
-        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!this.ctx) {
+          // an iPhone's silent mode mutes a page's sound unless the page asks for playback; the game's own sound button
+          // is how a player turns it off
+          try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* not on this browser */ }
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
         if (this.ctx.state === 'suspended') this.ctx.resume();
       } catch (e) { this.ctx = null; }
     },
@@ -4436,6 +4441,34 @@
     if (tag && !tag.hidden) { tag.hidden = true; ghost.tag = ''; }
   }
   addEventListener('resize', () => { ghost.tagW = 0; ghost.tag = ''; });
+
+  // The flight screen stays still while the keyboard comes and goes. In the app the page ends where the keyboard begins,
+  // so anything sized by the viewport's height would shrink each time an answer box takes focus. The scope and the gap
+  // above it are sized here instead: on a touch screen from the tallest height seen at this width (a smaller one is the
+  // keyboard on its way in or out; a rotation starts again), elsewhere from the height whenever nothing is being typed.
+  // The page also goes back to where it was scrolled before the keyboard came up.
+  const fit = { w: 0, h: 0, scroll: null };
+  const touchScreen = !!(window.matchMedia && matchMedia('(hover: none) and (pointer: coarse)').matches);
+  const typingNow = () => { const el = document.activeElement; return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'); };
+  function fitScope() {
+    const w = innerWidth, h = innerHeight;
+    if (w !== fit.w) { fit.w = w; fit.h = 0; }
+    fit.h = touchScreen ? Math.max(h, fit.h) : typingNow() && fit.h ? fit.h : h;
+    const root = document.documentElement.style;
+    root.setProperty('--scope', `${Math.round(Math.min(w * 0.9, fit.h * 0.46, 440))}px`);
+    root.setProperty('--app-gap', `${Math.round(clamp(fit.h * 0.02, 10, 16))}px`);
+  }
+  addEventListener('resize', fitScope);
+  addEventListener('focusin', e => {
+    if (touchScreen && fit.scroll === null && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) fit.scroll = scrollY;
+  });
+  addEventListener('focusout', () => setTimeout(() => { // once the keyboard has gone
+    fitScope();
+    if (fit.scroll === null || typingNow()) return;
+    if (Math.abs(scrollY - fit.scroll) > 1) scrollTo(0, fit.scroll);
+    fit.scroll = null;
+  }, 400));
+  fitScope();
 
   // ---- the reveal: both answers face up, side by side ----
   function duelFace(run, res) {
