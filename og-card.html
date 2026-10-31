@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>Farfound link card</title>
+<style>
+  /* The link card behind og.png: render this page at 1200 by 630 and save it as og.png.
+     It uses the game's own fonts from play/ (run sync-play.sh first) and the colours from the game and site.css. */
+  @font-face { font-family: 'Michroma'; font-weight: 400; src: url(play/ff-michroma-400-latin.woff2) format('woff2'); }
+  @font-face { font-family: 'Atkinson Hyperlegible'; font-weight: 400; src: url(play/ff-atkinsonhyperlegible-400-latin.woff2) format('woff2'); }
+  @font-face { font-family: 'Atkinson Hyperlegible'; font-weight: 700; src: url(play/ff-atkinsonhyperlegible-700-latin.woff2) format('woff2'); }
+  :root {
+    --void: #070a1c;
+    --deck: #0e1330;
+    --ink: #e9edf8;
+    --ink-dim: #a6a9c6;
+    --flare-hi: #ffb36b;
+    --f-display: "Michroma", "Eurostile", "Arial Black", sans-serif;
+    --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  }
+  html, body { margin: 0; }
+  body {
+    width: 1200px; height: 630px; overflow: hidden;
+    background: radial-gradient(90% 60% at 50% -10%, #1a2260 0%, transparent 60%), var(--void);
+    color: var(--ink);
+    font-family: var(--f-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  .card { box-sizing: border-box; height: 100%; padding: 64px 72px; display: grid; grid-template-columns: 1fr 340px; align-items: center; gap: 52px; }
+  h1 { margin: 0; font: 400 86px/1 var(--f-display); letter-spacing: 0.04em; }
+  .line { margin: 26px 0 0; font-size: 42px; line-height: 1.22; font-weight: 700; }
+  /* one flight's result as the share shows it: a tier symbol per prompt, never the answers */
+  .row { display: flex; gap: 10px; margin-top: 40px; }
+  .row span {
+    width: 72px; height: 78px; display: grid; place-items: center; box-sizing: border-box;
+    background: var(--deck); border-radius: 10px; border-bottom: 5px solid var(--tier);
+    font-size: 44px; line-height: 1;
+  }
+  .free { margin: 32px 0 0; font-size: 31px; color: var(--ink-dim); }
+  .free b { color: var(--flare-hi); font-weight: 700; }
+  .icon { width: 340px; height: 340px; border-radius: 76px; box-shadow: 0 18px 80px rgba(255, 122, 61, 0.3); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div>
+    <h1>Farfound</h1>
+    <p class="line">The daily trivia game where rare answers fly further.</p>
+    <div class="row" aria-label="A sample result">
+      <span style="--tier:#c9d1d5">🌍</span>
+      <span style="--tier:#5ccf7a">🛫</span>
+      <span style="--tier:#5ab0ff">🌙</span>
+      <span style="--tier:#b994ff">⭐</span>
+      <span style="--tier:#ffe03d">🪐</span>
+      <span style="--tier:#5ab0ff">🌙</span>
+      <span style="--tier:#5ccf7a">🛫</span>
+      <span style="--tier:#b994ff">⭐</span>
+    </div>
+    <p class="free"><b>Play free in your browser.</b> No ads.</p>
+  </div>
+  <img class="icon" src="icon.png" alt="">
+</div>
+</body>
+</html>

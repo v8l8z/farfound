@@ -6,6 +6,18 @@
 <title>Farfound Flight Plan</title>
 <meta name="description" content="A friend sent you a Farfound flight plan. Fly the same eight prompts and try to go further.">
 <link rel="icon" href="../icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Farfound">
+<meta property="og:title" content="A Farfound flight plan">
+<meta property="og:description" content="A friend sent you a flight plan. Fly the same eight prompts, in your browser or on iPhone, and try to go further.">
+<meta property="og:image" content="https://v8l8z.github.io/farfound/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Farfound rocket icon and wordmark above a row of the game's tier symbols.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A Farfound flight plan">
+<meta name="twitter:description" content="A friend sent you a flight plan. Fly the same eight prompts, in your browser or on iPhone, and try to go further.">
+<meta name="twitter:image" content="https://v8l8z.github.io/farfound/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Michroma&family=Space+Mono&display=swap">
@@ -26,13 +38,16 @@
     <p>Fly the same eight prompts with their rocket's ghost beside yours. Their answers stay hidden until you've given yours.</p>
     <div class="btns">
       <a class="btn" id="open" href="farfound://plan">Open in Farfound</a>
-      <a class="btn btn-line" href="https://apps.apple.com/app/id6827748914">Get Farfound</a>
+      <a class="btn btn-line" id="fly" href="../play/">Fly it in your browser</a>
     </div>
-    <p class="dim">Don't have Farfound yet? Get it from the App Store, then come back to this page and tap Open in Farfound.</p>
+    <p class="dim">Don't have Farfound yet? Fly it in your browser now, or <a href="https://apps.apple.com/app/id6827748914">get it from the App Store</a>, then come back to this page and tap Open in Farfound.</p>
   </div>
   <div id="broken" hidden>
     <p>This flight plan link looks incomplete. Ask whoever sent it to send it again.</p>
-    <div class="btns"><a class="btn" href="https://apps.apple.com/app/id6827748914">Get Farfound</a></div>
+    <div class="btns">
+      <a class="btn" href="../play/">Play in your browser</a>
+      <a class="btn btn-line" href="https://apps.apple.com/app/id6827748914">Get Farfound</a>
+    </div>
   </div>
   <footer>
     <a href="../">Farfound</a>
@@ -90,6 +105,8 @@
     rows.appendChild(tr);
   }
   document.getElementById('open').href = 'farfound://plan' + location.hash;
+  // the web game reads the same payload from its own link
+  document.getElementById('fly').href = '../play/' + location.hash;
   document.getElementById('plan').hidden = false;
 })();
 </script>
