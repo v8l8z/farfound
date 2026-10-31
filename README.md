@@ -2,7 +2,7 @@
 
 The public pages for Farfound, the daily word game where rare answers fly further: the home page, the game itself, support, the privacy policy and the page that opens flight plan links.
 
-Served by GitHub Pages at https://v8l8z.github.io/farfound/
+Served by GitHub Pages at https://farfoundtrivia.com/ (the CNAME file names the domain; the old https://v8l8z.github.io/farfound/ addresses forward there). `.well-known/apple-app-site-association` lets farfoundtrivia.com/plan/ and /play/ links open the iPhone app when it is installed, and `.nojekyll` makes GitHub Pages serve that folder.
 
 ## Pages
 

@@ -1,0 +1,21 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "8G52BUHLMY.com.farfound.app"
+        ],
+        "components": [
+          {
+            "/": "/plan/*",
+            "comment": "a flight plan opens in the app"
+          },
+          {
+            "/": "/play/*",
+            "comment": "a shared result or the browser game opens in the app"
+          }
+        ]
+      }
+    ]
+  }
+}

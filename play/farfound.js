@@ -4057,8 +4057,10 @@
 
   // ---- the result to share: which flight, a symbol per burn, how far, and the streak ----
   // Never the answers, so it spoils nothing for a friend who hasn't flown it yet. The link plays in any browser,
-  // and its #today opens on today's flight (see openHash) rather than on a free flight's Launch
-  const PLAY_URL = 'https://v8l8z.github.io/farfound/play/';
+  // and its #today opens on today's flight (see openHash) rather than on a free flight's Launch.
+  // farfoundtrivia.com is the game's own site; links there open the iPhone app when it is installed (universal links)
+  const SITE_URL = 'https://farfoundtrivia.com/';
+  const PLAY_URL = `${SITE_URL}play/`;
   const SHARE_URL = `${PLAY_URL}#today`;
   const MARKS = ['\u{1F30D}', '\u{1F6EB}', '\u{1F319}', '\u2B50', '\u{1FA90}']; // by tier: Down to Earth to Out of this World
   const MARK_OFF = '\u{1F4AB}', MARK_MISS = '\u{1F4A8}'; // off the charts; no answer
@@ -4193,7 +4195,7 @@
   // the UTF-8 JSON {"v":1,"day":"YYYY-MM-DD" or null,"ids":[8 prompt ids],"crew":[{"n":callsign,"b":[[tier,gain,tenths,answer] x 8]}]}.
   // tier is the logbook tier 0 to 5 or -1 for a miss, tenths the time taken to lock in. The crew is oldest first, at most 8.
   // A separate web page opens these links, so the format stays exactly this.
-  const PLAN_URL = 'https://v8l8z.github.io/farfound/plan/';
+  const PLAN_URL = `${SITE_URL}plan/`;
   const CREW_MAX = 8;
   const ANSWER_MAX = 30;
   const GAIN_MAX = TIERS[TIERS.length - 1].thrust + OFF_BONUS;
@@ -4772,6 +4774,10 @@
   const planQueue = [];
   function openPlanLink(link) {
     if (!started) { planQueue.push(link); return true; }
+    // a shared result's link (…/play/#today) opens the app on today's flight, not as a plan
+    if (/(?:#|%23)today$/i.test(String(link).trim())) { openToday(); return true; }
+    // a plain link to the site that opened the app carries nothing to show
+    if (/^https?:\/\//i.test(String(link).trim()) && !planPayload(link)) return true;
     const P = readPlan(link);
     showPlan(P);
     return !!P;
@@ -4786,7 +4792,10 @@
     if (!today && !planPayload(h)) return;
     try { window.history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
     if (!today) openPlanLink(h);
-    else if (state.screen === 'home' && store.daily.date !== todayKey() && helpEl.hidden && hangarEl.hidden && !planView.open) openHelp('daily');
+    else openToday();
+  }
+  function openToday() {
+    if (state.screen === 'home' && store.daily.date !== todayKey() && helpEl.hidden && hangarEl.hidden && !planView.open) openHelp('daily');
   }
   addEventListener('hashchange', openHash);
 
@@ -5736,7 +5745,7 @@
   }
 
   function start(data) {
-    if (/[?&]debug\b/.test(location.search)) window.__ff = { backdrop, icon, iconCanvas, ROUTE, scene, ART, drawShowcase, ROCKETS, store, lookup, PROMPTS, BY_ID, DRAWABLE, PACK_LIST, DAY_CARDS, flightFor, BAY, bayOn, drawPrompts, freePool, LEG, AT, placeOf, drawRocket, key, TIERS, TIER_MAP, partyNow: () => party, state, plan: { PLAN_URL, toB64url, fromB64url, planPayload, readPlan, checkPlan, planLink, planOf, planMessage, planToday, myBurns, ghostThrust, ghost }, growth: { resultText, nextFlightText, pastDays, longestRun, streak, dayNumber, todayKey, PLAY_URL, SHARE_URL, APP_URL, onWeb, freePool, flownBefore, bare, UNLISTED } };
+    if (/[?&]debug\b/.test(location.search)) window.__ff = { backdrop, icon, iconCanvas, ROUTE, scene, ART, drawShowcase, ROCKETS, store, lookup, PROMPTS, BY_ID, DRAWABLE, PACK_LIST, DAY_CARDS, flightFor, BAY, bayOn, drawPrompts, freePool, LEG, AT, placeOf, drawRocket, key, TIERS, TIER_MAP, partyNow: () => party, state, plan: { PLAN_URL, toB64url, fromB64url, planPayload, readPlan, checkPlan, planLink, planOf, planMessage, planToday, myBurns, ghostThrust, ghost }, growth: { resultText, nextFlightText, pastDays, longestRun, streak, dayNumber, todayKey, SITE_URL, PLAY_URL, SHARE_URL, APP_URL, onWeb, freePool, flownBefore, bare, UNLISTED } };
     scene.init($('sky'));
     renderSoundBtn();
     if (!restore(data)) resumeLive();
