@@ -3177,7 +3177,7 @@
         </ul>
         ${typeof window.farfoundPrivacyChoices === 'function' ? '<button type="button" class="btn-line" id="help-privacy">Privacy choices</button>' : ''}
         ${/^https:\/\//.test(window.farfoundPrivacyPolicyURL || '') ? `<a class="help-policy" href="${esc(window.farfoundPrivacyPolicyURL)}" target="_blank" rel="noopener">Privacy policy</a>` : ''}
-        ${go ? `<button type="button" class="btn btn-wide" id="help-go">${go}</button>` : ''}
+        ${go ? `<div class="help-foot"><button type="button" class="btn btn-wide" id="help-go">${go}</button></div>` : ''}
       </div>`;
     helpEl.hidden = false;
     app.inert = true;

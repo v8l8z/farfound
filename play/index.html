@@ -716,9 +716,17 @@
   .past-fly { grid-template-columns: minmax(0, 1fr); }
   .past-fly.is-done .bay-name { color: var(--ink-dim); }
   .app-link { display: inline-block; box-sizing: border-box; font-size: 14px; }
-  /* How to play's start button stays in view, so a new player is on the first prompt after two taps and no scrolling.
-     The last shadow is a band of the sheet's own dark under it, so the rules don't show through below the button */
-  #help-go { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 2; box-shadow: 0 3px 0 #a8461a, 0 -14px 18px rgba(4, 6, 18, 0.94), 0 30px 0 16px #04060f; }
+  /* How to play's start button sits on a solid bar pinned flush to the bottom of the screen, so a new player is on the
+     first prompt after two taps and no scrolling, and the rules never show below it. The bar runs edge to edge and down
+     under the home indicator. Sticky offsets count from inside the sheet's padding, so the bottom offset and the negative
+     margins take back the sheet's own side and bottom padding */
+  .help-foot {
+    position: sticky; bottom: calc(-28px - env(safe-area-inset-bottom, 0px)); z-index: 2;
+    margin: 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px))) calc(-28px - env(safe-area-inset-bottom, 0px)) calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+    padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    background: #04060f; box-shadow: 0 -14px 18px rgba(4, 6, 18, 0.94);
+  }
+  .help-foot #help-go { display: block; width: 100%; max-width: 640px; margin: 0 auto; }
   /* ---------- the flight log: the result share, and what else was out there ---------- */
   .share-box { display: flex; flex-direction: column; gap: 8px; }
   .share-box .app-link { align-self: center; }
