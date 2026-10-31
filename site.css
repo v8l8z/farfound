@@ -55,7 +55,7 @@ li + li { margin-top: 6px; }
 .panel { background: var(--deck); border: 2px solid var(--rule); border-radius: 14px; padding: 20px; margin: 20px 0; }
 .panel h2 { margin-top: 0; }
 .modes { display: grid; gap: 12px; margin: 16px 0 0; padding: 0; list-style: none; }
-.modes li { background: var(--deck); border-left: 4px solid var(--flare); border-radius: 8px; padding: 14px 16px; margin: 0; }
+.modes li { background: var(--deck); border: 1.5px solid var(--rule); border-radius: 8px; padding: 14px 16px; margin: 0; }
 .modes b { display: block; font-size: 18px; margin-bottom: 2px; }
 .board { width: 100%; border-collapse: collapse; font-family: var(--f-data); font-size: 15px; }
 .board th { text-align: left; font: 13px/1.4 var(--f-body); color: var(--ink-dim); padding: 0 8px 8px 0; }

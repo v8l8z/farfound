@@ -5745,7 +5745,7 @@
   }
 
   function start(data) {
-    if (/[?&]debug\b/.test(location.search)) window.__ff = { backdrop, icon, iconCanvas, ROUTE, scene, ART, drawShowcase, ROCKETS, store, lookup, PROMPTS, BY_ID, DRAWABLE, PACK_LIST, DAY_CARDS, flightFor, BAY, bayOn, drawPrompts, freePool, LEG, AT, placeOf, drawRocket, key, TIERS, TIER_MAP, partyNow: () => party, state, plan: { PLAN_URL, toB64url, fromB64url, planPayload, readPlan, checkPlan, planLink, planOf, planMessage, planToday, myBurns, ghostThrust, ghost }, growth: { resultText, nextFlightText, pastDays, longestRun, streak, dayNumber, todayKey, SITE_URL, PLAY_URL, SHARE_URL, APP_URL, onWeb, freePool, flownBefore, bare, UNLISTED } };
+    if (/[?&]debug\b/.test(location.search)) window.__ff = { backdrop, icon, iconCanvas, ROUTE, scene, ART, drawShowcase, ROCKETS, store, lookup, promptNudge, PROMPTS, BY_ID, DRAWABLE, PACK_LIST, DAY_CARDS, flightFor, BAY, bayOn, drawPrompts, freePool, LEG, AT, placeOf, drawRocket, key, TIERS, TIER_MAP, partyNow: () => party, state, plan: { PLAN_URL, toB64url, fromB64url, planPayload, readPlan, checkPlan, planLink, planOf, planMessage, planToday, myBurns, ghostThrust, ghost }, growth: { resultText, nextFlightText, pastDays, longestRun, streak, dayNumber, todayKey, SITE_URL, PLAY_URL, SHARE_URL, APP_URL, onWeb, freePool, flownBefore, bare, UNLISTED } };
     scene.init($('sky'));
     renderSoundBtn();
     if (!restore(data)) resumeLive();
