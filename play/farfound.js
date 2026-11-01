@@ -2868,8 +2868,18 @@
   // cards. Each new cycle re-deals the prompts within the half of the cycle they had last time, so a
   // prompt comes back after 8 to 20 days, never sooner. DECK_START is day 0 of the first cycle.
   // (If the bank isn't a multiple of 8, the few left over sit out of dailies but stay in free flights.)
-  const DECK_START = '2026-10-27';
+  // When the bank grows, a new deck starts on a later day and the days before it keep the deck they were
+  // flown with. Each deck holds the first `size` prompts of the bank (all of it when size is left out).
+  const DECKS = [{ start: '2026-10-27', size: 112 }, { start: '2026-11-02' }];
+  const DECK_START = DECKS[0].start;
   const deckCache = new Map();
+  function deckOf(day) {
+    let i = DECKS.length - 1;
+    while (i > 0 && day < DECKS[i].start) i--;
+    return i;
+  }
+  const deckPrompts = i => PROMPTS.slice(0, DECKS[i].size || PROMPTS.length);
+  const deckDays = i => Math.max(1, Math.floor(deckPrompts(i).length / BURNS));
   // cards in a shuffled order, each card's prompts shuffled, then dealt round the days one at a time,
   // so a card with no more prompts than there are days never lands twice on one day
   function dealDays(prompts, days, rand) {
@@ -2880,22 +2890,33 @@
     order.slice(0, days * BURNS).forEach((p, i) => hands[i % days].push(p));
     return hands.map(h => shuffle(h, rand));
   }
-  function deckCycle(cycle) {
-    if (deckCache.has(cycle)) return deckCache.get(cycle);
-    const days = Math.max(1, Math.floor(PROMPTS.length / BURNS)), rand = mulberry32(hashStr('farfound-deck-' + cycle));
+  // a later deck's first cycle deals the prompts the deck before it flew last, so none comes back within days
+  function firstDeal(i, prompts, days, rand) {
+    const flown = new Set();
+    for (let d = DECKS[i - 1].start; d < DECKS[i].start; d = dayAfter(d)) for (const p of dailyPrompts(d)) flown.add(p.id);
+    const fresh = prompts.filter(p => !flown.has(p.id)), first = Math.min(days, Math.floor(fresh.length / BURNS));
+    if (!flown.size || !first || first === days) return dealDays(prompts, days, rand);
+    const ahead = new Set(fresh.slice().sort((a, b) => (a.id < b.id ? -1 : 1)).slice(0, first * BURNS).map(p => p.id));
+    return [...dealDays(prompts.filter(p => ahead.has(p.id)), first, rand), ...dealDays(prompts.filter(p => !ahead.has(p.id)), days - first, rand)];
+  }
+  function deckCycle(i, cycle) {
+    const k = i + ':' + cycle;
+    if (deckCache.has(k)) return deckCache.get(k);
+    // the first deck keeps its original seeds, so its days deal exactly as they always have
+    const prompts = deckPrompts(i), days = deckDays(i), rand = mulberry32(hashStr('farfound-deck-' + (i ? i + '-' : '') + cycle));
     let deal;
-    if (cycle <= 0 || days < 2) deal = dealDays(PROMPTS, days, rand);
+    if (cycle <= 0 || days < 2) deal = i && cycle === 0 ? firstDeal(i, prompts, days, rand) : dealDays(prompts, days, rand);
     else {
-      const prev = deckCycle(cycle - 1), mid = Math.floor(days / 2);
+      const prev = deckCycle(i, cycle - 1), mid = Math.floor(days / 2);
       deal = [...dealDays(prev.slice(0, mid).flat(), mid, rand), ...dealDays(prev.slice(mid).flat(), days - mid, rand)];
     }
-    deckCache.set(cycle, deal);
+    deckCache.set(k, deal);
     return deal;
   }
   function dailyPrompts(day) {
-    const days = Math.max(1, Math.floor(PROMPTS.length / BURNS));
-    const n = dayNumber(day) - dayNumber(DECK_START), cycle = Math.floor(n / days);
-    return deckCycle(cycle)[n - cycle * days];
+    const i = deckOf(day), days = deckDays(i);
+    const n = dayNumber(day) - dayNumber(DECKS[i].start), cycle = Math.floor(n / days);
+    return deckCycle(i, cycle)[n - cycle * days];
   }
   // on a space anniversary its day card takes the last burn of Today's flight; the deck's hand itself never changes
   const dayCard = day => DATED.find(p => p.day === day.slice(5)) || null;
