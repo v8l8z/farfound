@@ -3239,7 +3239,9 @@
       return;
     }
     resumeClock();
-    const target = partyAnswering() ? $('pt-answer') : state.phase === 'scan' || state.phase === 'read' ? $('answer') : state.phase === 'reveal' ? $('btn-next') : state.phase === 'lock' ? $('lock-card') : o;
+    const answer = partyAnswering() ? $('pt-answer') : state.phase === 'scan' || state.phase === 'read' ? $('answer') : null;
+    if (answer) { focusAnswer(answer); return; }
+    const target = state.phase === 'reveal' ? $('btn-next') : state.phase === 'lock' ? $('lock-card') : o;
     if (target) target.focus({ preventScroll: true });
   }
   helpEl.addEventListener('click', e => {
@@ -3576,7 +3578,7 @@
     consoleEl.innerHTML = `
       <div class="card">
         <p class="eyebrow"><span>${esc(cardLabel(p))}</span></p>
-        <h2 class="prompt" id="prompt-text">${esc(p.text)}</h2>
+        <h2 class="prompt" id="prompt-text" tabindex="-1">${esc(p.text)}</h2>
         ${p.occasion ? `<p class="note" id="prompt-occasion">${esc(p.occasion)}</p>` : ''}
         ${topped ? '<p class="note" id="prompt-topped">Topped up with other cards.</p>' : ''}
       </div>
@@ -3593,8 +3595,17 @@
     $('answer-form').addEventListener('submit', e => { e.preventDefault(); submit(input.value); });
     $('btn-skip-scan').addEventListener('click', () => { if (state.phase === 'read' || state.phase === 'scan') miss('skip'); });
     announce(`Burn ${run.results.length + 1} of ${BURNS}. ${p.day ? 'Space anniversary. ' : ''}${topped ? `${sentence(p.text)} Topped up with other cards.` : p.text}`);
-    try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    focusAnswer(input);
     persistLive();
+  }
+
+  // On a phone a new prompt never opens the keyboard by itself: the answer box waits for a tap, and the prompt
+  // takes focus instead, so a screen reader starts on it. With a mouse or a physical keyboard the box is ready to type in.
+  function onTouchScreen() { return !!(window.matchMedia && matchMedia('(hover: none) and (pointer: coarse)').matches); }
+  function focusAnswer(input) {
+    const el = onTouchScreen() ? $('prompt-text') : input;
+    if (!el) return;
+    try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
   }
 
   function setFeedback(text, cls = '') {
@@ -4731,8 +4742,9 @@
     if (helpEl.hidden && !ask.open) resumeClock();
     const o = planView.opener;
     planView.opener = null;
-    const target = !helpEl.hidden || ask.open ? o : state.phase === 'scan' || state.phase === 'read' ? $('answer') : partyAnswering() ? $('pt-answer') : o;
-    if (target && document.contains(target)) target.focus({ preventScroll: true });
+    const answer = !helpEl.hidden || ask.open ? null : state.phase === 'scan' || state.phase === 'read' ? $('answer') : partyAnswering() ? $('pt-answer') : null;
+    if (answer) { focusAnswer(answer); return; }
+    if (o && document.contains(o)) o.focus({ preventScroll: true });
   }
   // whatever was on screen gives way: a flight in progress is logged as it stands, a game together ends
   function flyPlan() {
@@ -4929,6 +4941,8 @@
   let calmUntil = 0;
   const calm = () => { calmUntil = performance.now() + 400; };
   document.addEventListener('click', e => { if (e.detail > 0 && performance.now() < calmUntil) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  // nor can it move focus: landing on the answer box would open a phone's keyboard (a cancelled touchend sends no mousedown)
+  for (const t of ['mousedown', 'touchend']) document.addEventListener(t, e => { if (performance.now() < calmUntil && e.cancelable) e.preventDefault(); }, { capture: true, passive: false });
   // a held or early Enter from the screen before can't press a button that has just appeared
   function onPress(el, fn) {
     const at = performance.now();
@@ -5118,7 +5132,7 @@
     consoleEl.innerHTML = `
       <div class="card">
         <p class="eyebrow"><span>${esc(cardLabel(p))}</span><span>${esc(nameOf(i))}</span></p>
-        <h2 class="prompt" id="prompt-text">${esc(p.text)}</h2>
+        <h2 class="prompt" id="prompt-text" tabindex="-1">${esc(p.text)}</h2>
         ${race ? '' : P.said.length ? saidLine() : '<p class="note">No answers yet. Yours starts the orbit.</p>'}
       </div>
       <form class="answer-row" id="pt-form" autocomplete="off">
@@ -5136,7 +5150,7 @@
     startPartyClock();
     const said = race || !P.said.length ? '' : ` ${P.said.length} answer${P.said.length === 1 ? ' has' : 's have'} been given.`;
     announce(`${race ? `Round ${P.round + 1} of ${P.rounds}. ` : ''}${said ? sentence(p.text) + said : p.text}`);
-    try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    focusAnswer(input);
     input.scrollIntoView({ block: 'nearest' });
     saveParty();
   }
@@ -5539,8 +5553,9 @@
     if (leave) { goHome(); return; }
     calm();
     partyResume();
-    const o = partyAnswering() ? $('pt-answer') : ask.opener;
+    const o = ask.opener;
     ask.opener = null;
+    if (partyAnswering()) { focusAnswer($('pt-answer')); return; }
     if (o && document.contains(o)) o.focus({ preventScroll: true });
   }
 
