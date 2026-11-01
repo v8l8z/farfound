@@ -93,6 +93,10 @@
     const m = /\(like ([^)]+)\)/i.exec(text);
     return m ? m[1].split(/,| or /).map(x => x.trim()).filter(x => !/^not /i.test(x)).map(key).filter(Boolean) : [];
   }
+  // answers that are real but too general for a prompt as worded (sword for a famous fictional object): the player is
+  // told to name a particular one instead of being refused, keyed by the prompt's text. Each string lists them with ";"
+  // and joins other spellings with "=", like a tier
+  const GENERAL = new Map(Object.entries(DATA.general || {}).map(([text, s]) => [text, new Set(String(s).split(';').flatMap(g => g.split('=')).map(w => key(w)).filter(Boolean))]));
   function bankPrompt([cat, diff, text, ...tiers]) {
     const entries = [];
     const index = new Map();
@@ -108,7 +112,7 @@
         for (const k of keys) if (!index.has(k)) index.set(k, entry);
       }
     });
-    return { id: hashStr(text).toString(36), cat, diff, text, entries, index, examples: examplesOf(text), strict: SPELLING_RULE.test(text) };
+    return { id: hashStr(text).toString(36), cat, diff, text, entries, index, examples: examplesOf(text), strict: SPELLING_RULE.test(text), general: GENERAL.get(text) || null };
   }
   const PROMPTS = DATA.prompts.map(bankPrompt);
   // prompts out of rotation still load, so a saved flight or an earlier day's flight that used one plays on
@@ -372,7 +376,15 @@
         return `Name ${head.join(' ')}, not just ${ws.slice(i, j).join(' ')}.`;
       }
     }
+    if (p.general && p.general.has(k)) return `That's too general. Name a particular one, like ${likeOne(p, k)}.`;
     return '';
+  }
+  // the prompt's own example if it has one, else the first of its commonest answers
+  function likeOne(p, k) {
+    const m = /\(like ([^)]+)\)/i.exec(p.text);
+    if (m) return m[1].split(/,| or /)[0].trim();
+    const e = p.entries.find(x => x.tier === 0 && !x.judged && x.keys[0] !== k) || p.entries.find(x => !x.judged);
+    return e ? e.name : 'one from the logbook';
   }
 
   const ROUTE = DATA.route.map(([id, name, fact, miles]) => ({ id, name, fact, miles: Number(miles) || 0 }));
