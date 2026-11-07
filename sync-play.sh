@@ -39,7 +39,7 @@ awk '
   { print }
   END { if (!h) exit 1 }
 ' "$src/play-offline.html" > "$dest/index.html" || { echo "No </head> in $src/play-offline.html" >&2; exit 1; }
-cp "$src/farfound.js" "$src/farfound-data.js" "$src/farfound-packs.js" "$dest/"
+cp "$src/farfound.js" "$src/farfound-data.js" "$src/farfound-packs.js" "$src/farfound-categories.js" "$src/farfound-flags.js" "$dest/"
 # the fonts come with the game, so the page never needs Google Fonts
-cp "$src"/ff-*.woff2 "$src/font-licenses.txt" "$dest/"
+cp "$src"/ff-*.woff2 "$src/font-licenses.txt" "$src/flags-licence.txt" "$dest/"
 echo "Copied the game from $src into $dest"
