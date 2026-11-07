@@ -1474,7 +1474,9 @@
   }
 
   // ---------- the scope scene ----------
-  const ROCKET = { x: 46, y: 100 };
+  // in space the rocket flies nose up from the bottom middle of the scope; UP is its heading for drawRocket
+  const ROCKET = { x: 96, y: 132 };
+  const UP = -Math.PI / 2;
   const RS = 0.85; // rocket scale in grid units
   const PASS_MS = 230;
   const DEPART_MS = 650;
@@ -2072,8 +2074,9 @@
   const MIN_BASE = 62; // highest a foot may stand (grid y), so the nameplate clears the HUD row on a 300 px scope
   const EMBLEM = ['...#...', '..###..', '..###..', '..#.#..', '..###..', '.#####.', '##...##'];
   const FLAG_INK = '#06071a';
-  // a burn that reaches no new stop drops its answer as a beacon in open space, below the course line
-  const CRUISE_SITE = { x: 104, y: 156, lean: 0, float: true, dust: '#e9e6f5' };
+  // a burn that reaches no new stop drops its answer as a beacon in open space, beside the rocket and clear of the course line
+  const CRUISE_SITE = { x: 116, y: 156, lean: 0, float: true, dust: '#e9e6f5' };
+  const CRUISE_TOP = 26; // the next stop's marker sits at the top of the course line, below the HUD row
   const COURSE_ON = '#ffb36b';                 // --flare-hi
   const COURSE_OFF = 'rgba(166,169,198,0.4)';  // --ink-dim, faded
 
@@ -2286,7 +2289,7 @@
       const m = { x: fx, y: fy, r: fr, color, t0: performance.now(), top, ax: site.x, ay: site.y, lean: site.lean, float: site.float, dust: site.dust };
       const { tipX, tipY } = flagGeom(m);
       const px = (tipX / W) * 100, py = (tipY / W) * 100;
-      const toRight = px < 50; // the plate runs toward the roomier side of the pole
+      const toRight = at === CRUISE_SITE || px < 50; // the plate runs toward the roomier side of the pole, away from the rocket in open space
       const mods = (top ? ' is-top' : '') + (offCharts ? ' is-off' : '');
       const plate = document.createElement('div');
       plate.className = 'claim ' + (toRight ? 'to-right' : 'to-left') + mods;
@@ -2392,7 +2395,7 @@
         const spread = (Math.random() - 0.5) * 0.5;
         this.particles.push({
           x: nx, y: ny,
-          vx: -ca * sp - sa * spread * sp - wind, vy: -sa * sp + ca * spread * sp,
+          vx: -ca * (sp + wind) - sa * spread * sp, vy: -sa * (sp + wind) + ca * spread * sp,
           life: 0, max: spark ? 0.25 + Math.random() * 0.3 : 0.5 + Math.random() * 0.7,
           size: spark ? 0.6 : 2 + Math.random() * 2, spark, color: spark ? hexA(tint, 0.95) : 'rgba(205,210,225,0.55)',
         });
@@ -2453,7 +2456,8 @@
         if (a < 0.04) continue;
         g.fillStyle = `rgba(${s.tint},${a})`;
         if (streak > 1.5) {
-          g.fillRect(s.x, s.y, Math.max(s.size, streak * s.b), s.size * 0.7);
+          const len = Math.max(s.size, streak * s.b);
+          g.fillRect(s.x, s.y - len, s.size * 0.7, len);
           continue;
         }
         g.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size);
@@ -2507,13 +2511,13 @@
         }
         g.globalAlpha = 1;
       }
-      // the rocket stands on the pad, climbs, then turns to fly sideways
+      // the rocket stands on the pad and climbs straight up, then settles where it flies in space
       const turn = smooth(0.84, 0.97, k);
       const padY = groundY - 2 - 22.5 * RS;
       const climbY = k <= 0 ? padY : lerp(padY, 104, smooth(0.06, 0.2, k));
       const shake = !REDUCED && k > 0 && k < 0.08 ? Math.sin(t / 18) * 0.5 : 0;
       const rx = lerp(96 + shake, ROCKET.x, turn), ry = lerp(climbY, ROCKET.y, turn);
-      const angle = lerp(-Math.PI / 2, 0, turn);
+      const angle = UP;
       // on the pad before the first burn the engine spools up, white until the gauge lands, and smoke gathers
       const pre = k <= 0 && !this.cine ? this.pre : null;
       const flame = pre ? pre.flame : k <= 0 ? 0 : k < 0.06 ? 0.55 : 1 - turn * 0.4;
@@ -2532,7 +2536,7 @@
       const c = this.cine;
       const passEnd = DEPART_MS + c.mids * PASS_MS;
       const speed = q < DEPART_MS ? smooth(0, DEPART_MS, q) : q < passEnd ? 1 : 1 - smooth(passEnd, passEnd + ARRIVE_MS, q);
-      for (const s of this.stars) { s.x -= speed * 260 * s.b * dt; if (s.x < 0) s.x += W; }
+      for (const s of this.stars) { s.y += speed * 260 * s.b * dt; if (s.y > W) s.y -= W; }
       this.bg(q < passEnd ? c.start : c.to);
       this.drawStars(t, 1, speed * 18);
       if (q < DEPART_MS) {
@@ -2543,7 +2547,7 @@
         if (c.f0 > 0) {
           const size = 16 + 26 * c.f0;
           g.globalAlpha = (0.6 + 0.4 * c.f0) * (1 - p);
-          pixelDraw(g, roundIcon(c.start + 1), W - 12 - size - 60 * p, ROCKET.y - size / 2, size, size);
+          pixelDraw(g, roundIcon(c.start + 1), ROCKET.x - size / 2, CRUISE_TOP + 60 * p, size, size);
           g.globalAlpha = 1;
         }
       } else if (q < passEnd) {
@@ -2551,24 +2555,24 @@
         const w = ((q - DEPART_MS) % PASS_MS) / PASS_MS;
         const i = c.start + 1 + j;
         if (j !== c.passed) { c.passed = j; Sound.pass(j); Buzz.go([6]); } // each world passed plays the next note up
-        const x = W + 10 - w * (W + 80);
+        const y = -66 + w * (W + 80); // each world falls past on the right, top to bottom
         g.globalAlpha = 0.35;
-        pixelDraw(g, iconCanvas(i, 84), x + 10, 26, 56, 56);
+        pixelDraw(g, iconCanvas(i, 84), 120, y - 10, 56, 56);
         g.globalAlpha = 1;
-        pixelDraw(g, iconCanvas(i, 84), x, 26, 56, 56);
+        pixelDraw(g, iconCanvas(i, 84), 120, y, 56, 56);
         hudL.textContent = ROUTE[i].name;
       } else {
         if (c.land && !c.landed) { c.landed = true; c.land(); } // the landing chord as the destination comes into view
         const k = easeInOut(clamp((q - passEnd) / ARRIVE_MS, 0, 1)), s = 0.55 + 0.45 * k;
-        pixelDraw(g, backdrop(c.to), (1 - k) * 230 + (W - W * s) / 2, (W - W * s) / 2, W * s, W * s);
+        pixelDraw(g, backdrop(c.to), (W - W * s) / 2, -(1 - k) * 230 + (W - W * s) / 2, W * s, W * s);
         hudL.textContent = ROUTE[c.to].name;
       }
       const flame = 0.35 + speed * 0.75;
       const ry = ROCKET.y + (REDUCED ? 0 : Math.sin(t / 90) * 0.4 * speed);
-      this.emit(ROCKET.x, ry, 0, flame, dt, c.tint, speed * 120);
+      this.emit(ROCKET.x, ry, UP, flame, dt, c.tint, speed * 120);
       this.stepParticles(dt);
       this.drawParticles();
-      drawRocket(g, ROCKET.x, ry, 0, flame, c.tint, t);
+      drawRocket(g, ROCKET.x, ry, UP, flame, c.tint, t);
     },
 
     // between stops: the world just left recedes on the left, a dotted course runs ahead to the next stop,
@@ -2576,25 +2580,25 @@
     drawCruise(t, dt, f, e, iconA, speed) {
       const g = this.g, i = this.stop;
       const drift = REDUCED ? 0 : (0.05 + speed) * 260;
-      for (const s of this.stars) { s.x -= drift * s.b * dt; if (s.x < 0) s.x += W; }
+      for (const s of this.stars) { s.y += drift * s.b * dt; if (s.y > W) s.y -= W; }
       this.bg(i);
       this.drawStars(t, 1, speed * 24);
       this.drawLeaving(i, e);
       if (i >= LAST) return;
-      const size = 16 + 26 * f, ix = W - 12 - size;
-      const P = 2 * FP, x0 = ROCKET.x + 22, n = Math.max(1, Math.floor((ix - 4 - x0) / 6) + 1), lit = Math.round(n * f);
-      const y = Math.round(ROCKET.y / FP) * FP - FP;
+      const size = 16 + 26 * f, iy = CRUISE_TOP;
+      const P = 2 * FP, y0 = ROCKET.y - 24, n = Math.max(1, Math.floor((y0 - (iy + size + 4)) / 6) + 1), lit = Math.round(n * f);
+      const x = Math.round(ROCKET.x / FP) * FP - FP;
       g.globalAlpha = iconA;
       for (let k = 0; k < n; k++) {
-        const x = Math.round((x0 + k * 6) / FP) * FP;
+        const y = Math.round((y0 - k * 6) / FP) * FP;
         g.fillStyle = FLAG_INK; g.fillRect(x - FP, y - FP, P + 2 * FP, P + 2 * FP); // an ink outline, as on the flag
         g.fillStyle = k < lit ? COURSE_ON : COURSE_OFF; g.fillRect(x, y, P, P);
       }
       g.globalAlpha = iconA * (0.6 + 0.4 * f);
-      pixelDraw(g, roundIcon(i + 1), ix, ROCKET.y - size / 2, size, size);
+      pixelDraw(g, roundIcon(i + 1), ROCKET.x - size / 2, iy, size, size);
       g.globalAlpha = 1;
     },
-    // the world just left, shrinking away to the left (e: 0 in place, 1 gone). Its frame edges fade out as they come
+    // the world just left, shrinking away below (e: 0 in place, 1 gone). Its frame edges fade out as they come
     // into view, so a body the scope crops, like Jupiter or the Earth below orbit, never shows a hard cut.
     drawLeaving(i, e) {
       const src = backdrop(i), n = src.width, w = Math.min(1, e / 0.3), s = 1 - 0.45 * e;
@@ -2610,12 +2614,12 @@
         b.clearRect(0, 0, n, n);
         b.drawImage(src, 0, 0);
         b.globalCompositeOperation = 'destination-in';
-        let gr = b.createLinearGradient(0, 0, n, 0);
-        gr.addColorStop(1 - 0.24 * w, 'rgba(0,0,0,1)');
-        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        let gr = b.createLinearGradient(0, 0, 0, n);
+        gr.addColorStop(0, 'rgba(0,0,0,0)');
+        gr.addColorStop(0.24 * w, 'rgba(0,0,0,1)');
         b.fillStyle = gr;
         b.fillRect(0, 0, n, n);
-        gr = b.createLinearGradient(0, 0, 0, n);
+        gr = b.createLinearGradient(0, 0, n, 0);
         gr.addColorStop(0, 'rgba(0,0,0,0)');
         gr.addColorStop(0.16 * w, 'rgba(0,0,0,1)');
         gr.addColorStop(1 - 0.16 * w, 'rgba(0,0,0,1)');
@@ -2625,7 +2629,7 @@
         b.globalCompositeOperation = 'source-over';
       }
       // the bleed only shows at e = 0; past that the faded edges stretch out as nothing
-      bleedDraw(this.g, img, -230 * e + (W - W * s) / 2, (W - W * s) / 2, W * s);
+      bleedDraw(this.g, img, (W - W * s) / 2, 230 * e + (W - W * s) / 2, W * s);
     },
 
     // a wash of the tier colour over the whole scope: full through the hit-stop, then gone in 240 ms
@@ -2673,11 +2677,11 @@
           const q = el / c.total, k = REDUCED ? 1 : easeInOut(q), sp = REDUCED ? 0 : Math.sin(Math.PI * q);
           this.drawCruise(t, dt, lerp(c.f0, c.f1, k), lerp(c.e0, cruiseE(c.f1), k), lerp(c.a0, 1, k), 0.25 * sp);
           const flame = 0.3 + 0.7 * sp, ry = ROCKET.y + (REDUCED ? 0 : Math.sin(t / 90) * 0.4 * sp);
-          this.emit(ROCKET.x, ry, 0, flame, dt, c.tint, sp * 60);
+          this.emit(ROCKET.x, ry, UP, flame, dt, c.tint, sp * 60);
           this.stepParticles(dt);
           this.drawParticles();
-          drawRocket(g, ROCKET.x, ry, 0, flame, c.tint, t);
-        } else if (REDUCED) { this.bg(c.to); this.drawStars(t); drawRocket(g, ROCKET.x, ROCKET.y, 0, 1, c.tint, t); }
+          drawRocket(g, ROCKET.x, ry, UP, flame, c.tint, t);
+        } else if (REDUCED) { this.bg(c.to); this.drawStars(t); drawRocket(g, ROCKET.x, ROCKET.y, UP, 1, c.tint, t); }
         else if (el < c.launch) this.drawLaunch(t, el / c.launch, dt);
         else this.drawTravel(t, el - c.launch, dt);
         if (this.cine) { if (c.kind === 'nudge' || REDUCED || el >= c.launch) drawGhost(g, t, dt); return; }
@@ -2695,16 +2699,16 @@
       const sputter = t < this.sputterUntil && !REDUCED, pre = this.pre;
       const rx = ROCKET.x, ry = ROCKET.y + (REDUCED ? 0 : Math.sin(t / 700) * 0.8);
       if (sputter && Math.random() < 0.35) {
-        this.particles.push({ x: rx - 18 * RS, y: ry + (Math.random() - 0.5) * 3, vx: -10 - Math.random() * 10, vy: (Math.random() - 0.5) * 6, life: 0, max: 0.8, size: 2, spark: false, color: 'rgba(170,175,190,0.6)' });
+        this.particles.push({ x: rx + (Math.random() - 0.5) * 3, y: ry + 18 * RS, vx: (Math.random() - 0.5) * 6, vy: 10 + Math.random() * 10, life: 0, max: 0.8, size: 2, spark: false, color: 'rgba(170,175,190,0.6)' });
       }
       // cruising, the engine idles with a small coasting flame; before a burn it spools up, white until the gauge lands
       const flame = sputter ? (Math.random() < 0.4 ? 0.25 : 0) : pre ? pre.flame : cruising ? 0.22 : 0;
       const tint = pre ? pre.tint : '#ffd27a';
-      if (!sputter) this.emit(rx, ry, 0, flame, dt, tint, 20);
+      if (!sputter) this.emit(rx, ry, UP, flame, dt, tint, 20);
       this.stepParticles(dt);
       this.drawParticles();
       drawGhost(g, t, dt);
-      drawRocket(g, rx, ry, 0, flame, tint, t);
+      drawRocket(g, rx, ry, UP, flame, tint, t);
     },
   };
 
@@ -4438,7 +4442,7 @@
     const run = state.run;
     if (state.screen !== 'flight' || !run || !run.plan) return;
     const T = ghostThrust(run), pulse = REDUCED ? 0 : clamp(1 - (performance.now() - (state.ghostPulse || -1e9)) / 600, 0, 1);
-    let x, y, angle = 0, flame;
+    let x, y, angle = UP, flame;
     if (pad) {
       if (T <= 0) ghost.rise = 0;
       else if (!ghost.rise) ghost.rise = t;
@@ -4446,13 +4450,12 @@
       if (k >= 1) return;
       x = 134;
       y = 156 - 2 - 22.5 * RS - k * k * 190;
-      angle = -Math.PI / 2;
       flame = ghost.rise ? 0.9 : 0.4 * pulse;
     } else {
       const want = T - run.thrust;
       ghost.d = REDUCED ? want : ghost.d + (want - ghost.d) * Math.min(1, dt * 3);
-      x = ROCKET.x + clamp(ghost.d * 2.2, -44, 100);
-      y = ROCKET.y - 26 + (REDUCED ? 0 : Math.sin(t / 650 + 1.3) * 0.8);
+      x = ROCKET.x + 30 + (REDUCED ? 0 : Math.sin(t / 650 + 1.3) * 0.8);
+      y = ROCKET.y - clamp(ghost.d * 2.2, -40, 96);
       flame = 0.25 + 0.6 * pulse;
     }
     x = Math.round(x * K) / K; // on the scope's own pixels, so the sprite stays crisp
@@ -4475,7 +4478,7 @@
     const sw = !ghost.tagW && tag.parentNode ? tag.parentNode.clientWidth : 0;
     if (sw) ghost.tagW = ((tag.offsetWidth || 0) / sw) * 100;
     const half = Math.min(ghost.tagW / 2 + 1, 50);
-    const at = `${clamp((x / W) * 100, half, 100 - half).toFixed(1)}|${(((y - (pad ? 22 : 9)) / W) * 100).toFixed(1)}`;
+    const at = `${clamp((x / W) * 100, half, 100 - half).toFixed(1)}|${(((y - 22) / W) * 100).toFixed(1)}`;
     if (ghost.tag === at) return;
     ghost.tag = at;
     const [l, tp] = at.split('|');
