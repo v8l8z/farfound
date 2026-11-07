@@ -5724,9 +5724,9 @@
   let FLAGS = null;
   const flags = { order: [], i: 0, named: 0, stop: 0, phase: 'idle', deadline: 0, lastSecs: 0, prevT: 0 };
   function loadFlags() {
-    const build = () => (FLAGS = list(window.FARFOUND_FLAGS).filter(r => Array.isArray(r) && r.length === 3).map(([code, names, svg]) => {
+    const build = () => (FLAGS = list(window.FARFOUND_FLAGS).filter(r => Array.isArray(r) && r.length >= 3).map(([code, names, svg, level]) => {
       const all = String(names).split('=').map(n => n.trim()).filter(Boolean);
-      return { code: String(code), name: all[0], keys: all.map(key).filter(Boolean), svg: String(svg) };
+      return { code: String(code), name: all[0], keys: all.map(key).filter(Boolean), svg: String(svg), level: clamp(Math.round(Number(level) || 4), 1, 5) };
     }));
     if (FLAGS) return Promise.resolve(FLAGS);
     if (window.FARFOUND_FLAGS) return Promise.resolve(build());
@@ -5761,6 +5761,18 @@
     const near = FLAGS.find(f => f !== right && flagHit(k, f));
     return near ? { kind: 'wrong', other: near } : { kind: 'none' };
   }
+  // A run gets harder as it goes: 10 very easy flags, 10 easy, 20 medium, 30 hard, then the very hard ones, each stage
+  // drawn at random from a bigger group so runs differ, then whatever is left
+  const FLAG_STAGES = [[1, 10], [2, 10], [3, 20], [4, 30], [5, Infinity]];
+  function flagOrder() {
+    const left = shuffle(FLAGS.slice()), out = [];
+    for (const [level, n] of FLAG_STAGES) {
+      const pick = left.filter(f => f.level === level).slice(0, n);
+      out.push(...pick);
+      for (const f of pick) left.splice(left.indexOf(f), 1);
+    }
+    return [...out, ...left];
+  }
   async function openFlags() {
     Sound.unlock();
     try { await loadFlags(); } catch (e) { announce('The flags could not load. Try again in a moment.'); return; }
@@ -5775,7 +5787,7 @@
     logEl.hidden = true;
     app.classList.remove('is-home');
     window.scrollTo(0, 0);
-    Object.assign(flags, { order: shuffle(FLAGS.slice()), i: 0, named: 0, stop: 0 });
+    Object.assign(flags, { order: flagOrder(), i: 0, named: 0, stop: 0 });
     if (scene.cine) { scene.cine = null; $('caption-slot').innerHTML = ''; }
     scene.calm();
     scene.setStop(0);
