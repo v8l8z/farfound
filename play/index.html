@@ -271,6 +271,11 @@
   .answer-row .hint-btn { flex: 0 0 auto; width: 52px; height: auto; align-self: stretch; }
   .hint-btn svg { width: 22px; height: 22px; }
   .hint-btn.is-used { opacity: 0.45; }
+  /* Flags: the flag big enough to read on a phone, on a thin frame so white flags still show their edge */
+  .flag-row { display: flex; align-items: center; gap: 14px; }
+  .flag-frame { flex: 0 0 auto; width: clamp(120px, 38%, 200px); aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px var(--rule); }
+  .flag-frame svg { display: block; width: 100%; height: 100%; }
+  .flag-frame.is-small { width: min(150px, 50%); margin: 12px auto 4px; }
 
   .find-card { border-color: color-mix(in srgb, var(--cls) 55%, var(--rule)); overflow: hidden; } /* a name stamps in from bigger than it ends up */
   .find-card .eyebrow span:first-child { color: var(--cls); }
@@ -820,5 +825,6 @@
 
 <script src="farfound-data.js"></script>
 <script src="farfound-packs.js"></script>
+<script src="farfound-categories.js"></script>
 <script src="farfound.js"></script>
 </body></html>

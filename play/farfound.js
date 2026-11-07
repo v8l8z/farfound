@@ -155,6 +155,12 @@
   // every prompt a player can draw outside Today's flight, grouped by its pack or else its card type
   const DRAWABLE = [...PROMPTS, ...PACK_PROMPTS];
   for (const p of DRAWABLE) p.group = p.pack || p.cat;
+  // category flights (farfound-categories.js): each category's own prompts sit outside free flights and Today's flight,
+  // but they join BY_ID so a saved flight or a flight plan made from one plays on
+  const CATEGORIES = list(((typeof window === 'object' && window.FARFOUND_CATEGORIES) || {}).cats).filter(c => c && typeof c.key === 'string' && typeof c.name === 'string');
+  const CAT_NAME = new Map(CATEGORIES.map(c => [c.key, c.name]));
+  const CAT_PROMPTS = CATEGORIES.flatMap(c => list(c.prompts).filter(rowOk).map(r => Object.assign(bankPrompt(r), { catFlight: c.key })));
+  for (const p of CAT_PROMPTS) if (!BY_ID.has(p.id)) BY_ID.set(p.id, p);
 
   const AR_RE = /[\u0600-\u06FF]/;
   // spaces removed but no singular: singular() reads machboos as machboo and leaves machbous alone
@@ -475,7 +481,7 @@
     return best;
   }
   function readStore(raw) {
-    const base = { muted: false, best: 0, bestT: 0, flights: 0, daily: {}, seen: [], points: 0, pointsScale: 2, rocket: 'dimestore', rocketsSeen: 1, helpSeen: false, cardsOff: [], partySetup: null, callsign: null, bestStreak: 0, dailyFlown: 0, bestDaily: 0, replayDays: [] };
+    const base = { muted: false, best: 0, bestT: 0, flights: 0, daily: {}, seen: [], points: 0, pointsScale: 2, rocket: 'dimestore', rocketsSeen: 1, helpSeen: false, cardsOff: [], partySetup: null, callsign: null, bestStreak: 0, dailyFlown: 0, bestDaily: 0, replayDays: [], flagsBest: 0 };
     try {
       const saved = JSON.parse(raw || '{}');
       const best = Number.isInteger(saved.best) ? clamp(saved.best, 0, LAST) : 0;
@@ -505,6 +511,8 @@
         bestDaily: Math.max(whole(saved.bestDaily), saved.daily && typeof saved.daily === 'object' ? whole(saved.daily.thrust) : 0),
         // the past flights flown from Past flights, by flight number, so each earns points once
         replayDays: Array.isArray(saved.replayDays) ? saved.replayDays.filter(Number.isInteger).slice(-30) : [],
+        // the most flags named in one Flags run
+        flagsBest: whole(saved.flagsBest),
       };
     } catch (e) { return base; }
   }
@@ -2885,6 +2893,26 @@
     return out;
   }
   function pickPrompts(rand, useSeen) { return drawPrompts(BURNS, { rand, useSeen }); }
+  // a category's prompts: bank prompts of its card types or exact texts, and its own, never yesterday's, today's or
+  // tomorrow's daily prompts (a flight's log lists every answer)
+  function categoryPool(key) {
+    const c = CATEGORIES.find(x => x.key === key);
+    if (!c) return [];
+    const kinds = new Set(list(c.bank)), texts = new Set(list(c.texts).map(t => shownText(String(t)))), today = todayKey(), near = new Set();
+    for (const d of [dayBefore(today), today, dayAfter(today)]) for (const p of [...dailyPrompts(d), ...flightFor(d)]) near.add(p.id);
+    const pool = [...PROMPTS.filter(p => kinds.has(p.cat) || texts.has(p.text)), ...CAT_PROMPTS.filter(p => p.catFlight === key)];
+    return pool.filter((p, i) => !near.has(p.id) && pool.indexOf(p) === i);
+  }
+  const categoryReady = key => categoryPool(key).length >= BURNS;
+  // unseen prompts first, in a fresh shuffle; they count as seen once dealt
+  function drawCategory(key) {
+    const pool = shuffle(categoryPool(key), Math.random);
+    const out = [...pool.filter(p => !seen.has(p.id)), ...pool.filter(p => seen.has(p.id))].slice(0, BURNS);
+    for (const p of out) seen.add(p.id);
+    store.seen = [...seen];
+    save();
+    return out;
+  }
 
   // ---------- today's flight ----------
   // The bank is dealt as a deck: every prompt once per cycle of days, each day's eight from different
@@ -3474,6 +3502,13 @@
         </div>
       </div>
       ${hangarButton()}
+      <section class="cats" aria-labelledby="cats-title">
+        <h2 class="section-title" id="cats-title">Categories</h2>
+        <div class="modes">
+          ${CATEGORIES.filter(c => categoryReady(c.key)).map(c => `<button type="button" class="mode" data-cat="${esc(c.key)}"><span class="mode-name">${esc(c.name)}</span><span class="mode-desc">${esc(c.blurb || '')}</span></button>`).join('')}
+          <button type="button" class="mode" id="btn-flags"><span class="mode-name">Flags</span><span class="mode-desc">Name the country. Every right answer flies you on; one wrong answer ends the run.${store.flagsBest ? ` Your best is ${store.flagsBest}.` : ''}</span></button>
+        </div>
+      </section>
       <section class="together" aria-labelledby="together-title">
         <h2 class="section-title" id="together-title">Play together</h2>
         <div class="modes">
@@ -3500,6 +3535,8 @@
     $('btn-hangar').addEventListener('click', e => openHangar(e.currentTarget));
     $('btn-race').addEventListener('click', () => openParty('race'));
     $('btn-orbit').addEventListener('click', () => openParty('orbit'));
+    for (const b of consoleEl.querySelectorAll('[data-cat]')) b.addEventListener('click', () => { Sound.unlock(); startFlight('cat', null, null, b.dataset.cat); });
+    $('btn-flags').addEventListener('click', () => openFlags());
     wirePaste();
     if (had && $(had)) $(had).focus({ preventScroll: true });
   }
@@ -3525,6 +3562,7 @@
     state.screen = 'home';
     state.run = null;
     state.phase = 'idle';
+    flags.phase = 'idle';
     logEl.hidden = true;
     clearLive();
     endParty();
@@ -3544,7 +3582,8 @@
   // ---------- a flight ----------
   // plan: a flight plan to race (mode 'duel'), the same prompts in the same order.
   // day: an earlier day's flight to fly again (mode 'past'), its exact prompts flown as a free flight
-  function startFlight(mode, plan = null, day = null) {
+  // cat: the category a category flight (mode 'cat') draws from
+  function startFlight(mode, plan = null, day = null, cat = null) {
     const today = todayKey();
     cancelCheck();
     app.inert = false;
@@ -3559,7 +3598,8 @@
       run.prompts = mode === 'duel' ? plan.ids.map(id => BY_ID.get(id)) : flightFor(day);
       // flown like a free flight, its prompts count as seen
       if (!asDaily) { for (const p of run.prompts) seen.add(p.id); store.seen = [...seen]; }
-    } else run.prompts = mode === 'daily' ? flightFor(today) : pickPrompts(Math.random, true);
+    } else if (mode === 'cat') { run.cat = cat; run.prompts = drawCategory(cat); }
+    else run.prompts = mode === 'daily' ? flightFor(today) : pickPrompts(Math.random, true);
     if (run.prompts.topped) run.topped = true;
     store.flights += 1;
     save();
@@ -3575,7 +3615,7 @@
   }
 
   // the small label above a prompt: its pack, a space anniversary, or else its card type
-  const cardLabel = p => (p.day ? 'Space anniversary' : PACK_NAME.get(p.pack) || CATS[p.cat] || p.cat);
+  const cardLabel = p => (p.day ? 'Space anniversary' : PACK_NAME.get(p.pack) || CAT_NAME.get(p.catFlight) || CATS[p.cat] || p.cat);
   function showScan() {
     endLock(true);
     if (scene.cine) scene.skip(true);
@@ -3616,6 +3656,8 @@
     const input = $('answer');
     input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
     $('answer-form').addEventListener('submit', e => { e.preventDefault(); submit(input.value); });
+    // pressing Burn keeps the box focused, so the answer row can't drop back down the page mid-press (small phones)
+    $('btn-log').addEventListener('mousedown', e => { if (document.activeElement === input) e.preventDefault(); });
     $('btn-hint').addEventListener('click', () => { if (state.phase === 'read' || state.phase === 'scan') showHint(p); });
     announce(`Burn ${run.results.length + 1} of ${BURNS}. ${p.day ? 'Space anniversary. ' : ''}${topped ? `${sentence(p.text)} Topped up with other cards.` : p.text}`);
     focusAnswer(input);
@@ -4058,7 +4100,7 @@
     const offs = run.results.filter(r => r.offCharts).length;
     const rival = run.plan ? ghostName(run) : '';
     shareSend.busy = false;
-    const kind = run.plan ? `${run.daily ? (run.practice ? 'a practice run of today\'s flight' : 'today\'s flight') : 'a flight plan'} against ${rival}` : run.mode === 'daily' ? (run.practice ? 'a practice run of today\'s flight' : 'today\'s flight') : run.mode === 'past' ? `a ${run.practice ? 'practice ' : ''}replay of Flight ${dayNumber(run.past)}` : 'a free flight';
+    const kind = run.plan ? `${run.daily ? (run.practice ? 'a practice run of today\'s flight' : 'today\'s flight') : 'a flight plan'} against ${rival}` : run.mode === 'daily' ? (run.practice ? 'a practice run of today\'s flight' : 'today\'s flight') : run.mode === 'past' ? `a ${run.practice ? 'practice ' : ''}replay of Flight ${dayNumber(run.past)}` : run.mode === 'cat' ? `${/^[AEIOU]/.test(CAT_NAME.get(run.cat)) ? 'an' : 'a'} ${CAT_NAME.get(run.cat)} flight` : 'a free flight';
     const sub = `${run.results.length} burn${run.results.length === 1 ? '' : 's'} on ${kind} gave ${run.thrust} thrust and took you to stop ${run.stop} of ${LAST}${offs ? `, with ${offs} off the charts` : ''}.`;
     const pl = placeOf(run.thrust);
     const cellsLine = pl.cells ? `<p class="log-cells">${pl.cells} of ${pl.need} cells toward ${esc(ROUTE[pl.stop + 1].name)}.</p>` : '';
@@ -4120,7 +4162,7 @@
       </div>`;
     logEl.hidden = false;
     logEl.scrollTop = 0;
-    $('btn-again').addEventListener('click', () => { Sound.unlock(); startFlight(run.mode === 'daily' ? 'daily' : 'free'); });
+    $('btn-again').addEventListener('click', () => { Sound.unlock(); if (run.mode === 'cat' && categoryReady(run.cat)) startFlight('cat', null, null, run.cat); else startFlight(run.mode === 'daily' ? 'daily' : 'free'); });
     $('btn-map').addEventListener('click', () => showHome(true));
     $('btn-share').addEventListener('click', () => shareResult(run));
     for (const b of logEl.querySelectorAll('.wo-head')) b.addEventListener('click', () => openOutThere(run, b));
@@ -5187,6 +5229,7 @@
     const input = $('pt-answer');
     input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.repeat || e.isComposing || e.keyCode === 229)) e.preventDefault(); });
     $('pt-form').addEventListener('submit', e => { e.preventDefault(); lockAnswer(''); });
+    $('pt-burn').addEventListener('mousedown', e => { if (document.activeElement === input) e.preventDefault(); });
     $('pt-skip').addEventListener('click', () => lockAnswer('skip'));
     startPartyClock();
     const said = race || !P.said.length ? '' : ` ${P.said.length} answer${P.said.length === 1 ? ' has' : 's have'} been given.`;
@@ -5667,6 +5710,178 @@
     if (log && log.textContent !== logText) log.textContent = logText;
   }
 
+  // ---------- Flags: name the country, and one wrong answer ends the run ----------
+  // The flags load only when the round first opens (farfound-flags.js). Each right answer flies the rocket one stop on;
+  // another country's name, or the clock running out, ends the run. A word that names no country costs only time.
+  const FLAG_MS = 20000;
+  let FLAGS = null;
+  const flags = { order: [], i: 0, named: 0, stop: 0, phase: 'idle', deadline: 0, lastSecs: 0, prevT: 0 };
+  function loadFlags() {
+    const build = () => (FLAGS = list(window.FARFOUND_FLAGS).filter(r => Array.isArray(r) && r.length === 3).map(([code, names, svg]) => {
+      const all = String(names).split('=').map(n => n.trim()).filter(Boolean);
+      return { code: String(code), name: all[0], keys: all.map(key).filter(Boolean), svg: String(svg) };
+    }));
+    if (FLAGS) return Promise.resolve(FLAGS);
+    if (window.FARFOUND_FLAGS) return Promise.resolve(build());
+    return new Promise((res, rej) => {
+      const el = document.createElement('script');
+      el.src = 'farfound-flags.js';
+      el.onload = () => (window.FARFOUND_FLAGS ? res(build()) : rej(new Error('no flags')));
+      el.onerror = rej;
+      document.head.appendChild(el);
+    });
+  }
+  // one letter off counts for a name of five letters or more, as in a flight
+  function oneOff(a, b) {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0, j = 0, e = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++e > 1) return false;
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+    }
+    return e + (a.length - i) + (b.length - j) <= 1;
+  }
+  const flagHit = (k, f) => (f.keys.includes(k) ? 2 : k.length >= 5 && f.keys.some(x => x.length >= 5 && oneOff(k, x)) ? 1 : 0);
+  // an exact name wins over a near one, so Zambia is never read as Gambia
+  function judgeFlag(text) {
+    const k = key(text), right = flags.order[flags.i];
+    if (!k) return { kind: 'empty' };
+    if (flagHit(k, right) === 2) return { kind: 'right' };
+    const other = FLAGS.find(f => f !== right && flagHit(k, f) === 2);
+    if (other) return { kind: 'wrong', other };
+    if (flagHit(k, right)) return { kind: 'right' };
+    const near = FLAGS.find(f => f !== right && flagHit(k, f));
+    return near ? { kind: 'wrong', other: near } : { kind: 'none' };
+  }
+  async function openFlags() {
+    Sound.unlock();
+    try { await loadFlags(); } catch (e) { announce('The flags could not load. Try again in a moment.'); return; }
+    if (!FLAGS.length) return;
+    cancelCheck();
+    clearLive();
+    endParty();
+    app.inert = false;
+    state.screen = 'flags';
+    state.run = null;
+    state.phase = 'idle';
+    logEl.hidden = true;
+    app.classList.remove('is-home');
+    window.scrollTo(0, 0);
+    Object.assign(flags, { order: shuffle(FLAGS.slice()), i: 0, named: 0, stop: 0 });
+    if (scene.cine) { scene.cine = null; $('caption-slot').innerHTML = ''; }
+    scene.calm();
+    scene.setStop(0);
+    setHud();
+    pipsEl.innerHTML = '';
+    showFlag();
+  }
+  function showFlag() {
+    const f = flags.order[flags.i];
+    if (!f) { endFlags('all'); return; }
+    Object.assign(flags, { phase: 'scan', deadline: performance.now() + FLAG_MS, lastSecs: 0 });
+    signal.classList.remove('is-off');
+    signalFill.classList.remove('is-low');
+    signalFill.style.transform = 'scaleX(1)';
+    signalNum.textContent = String(FLAG_MS / 1000);
+    readout.textContent = `Flags ${flags.named}`;
+    consoleEl.innerHTML = `
+      <div class="card">
+        <p class="eyebrow"><span>Flags</span><span>Flag ${flags.i + 1}</span></p>
+        <div class="flag-row">
+          <div class="flag-frame" role="img" aria-label="A country's flag">${f.svg}</div>
+          <h2 class="prompt" id="prompt-text" tabindex="-1">Whose flag is this?</h2>
+        </div>
+      </div>
+      <form class="answer-row" id="flag-form" autocomplete="off">
+        <label class="sr-only" for="flag-answer">The country</label>
+        <input id="flag-answer" maxlength="60" placeholder="Type the country" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="send" dir="auto" aria-describedby="prompt-text flag-feedback">
+        <button class="btn" type="submit" id="flag-go">${flags.stop === 0 ? 'Ignite' : 'Burn'}</button>
+      </form>
+      <p class="feedback" id="flag-feedback">One wrong country ends the run.</p>`;
+    const input = $('flag-answer');
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
+    $('flag-form').addEventListener('submit', e => { e.preventDefault(); flagAnswer(input.value); });
+    // pressing Burn keeps the box focused: otherwise the answer row drops back down the page mid-press and the tap misses
+    $('flag-go').addEventListener('mousedown', e => { if (document.activeElement === input) e.preventDefault(); });
+    announce(`Flag ${flags.i + 1}. Whose flag is this?`);
+    focusAnswer(input);
+  }
+  function flagAnswer(text) {
+    if (flags.phase !== 'scan') return;
+    const r = judgeFlag(text), fb = $('flag-feedback');
+    if (r.kind === 'empty') return;
+    if (r.kind === 'none') {
+      fb.className = 'feedback is-error';
+      fb.textContent = 'That isn\'t a country name. Try again.';
+      announce(fb.textContent);
+      Sound.refuse();
+      $('flag-answer').select();
+      return;
+    }
+    if (r.kind === 'wrong') { endFlags('wrong', r.other); return; }
+    const f = flags.order[flags.i], from = flags.stop, to = Math.min(LAST, from + 1);
+    flags.phase = 'fly';
+    flags.named += 1;
+    signal.classList.add('is-off');
+    fb.className = 'feedback';
+    fb.textContent = `Yes, ${f.name}.`;
+    $('flag-answer').disabled = true;
+    $('flag-go').disabled = true;
+    readout.textContent = `Flags ${flags.named}`;
+    announce(`Yes, ${f.name}. ${flags.named} named.`);
+    Sound.climb(1);
+    const next = () => { if (state.screen === 'flags' && flags.phase === 'fly') { flags.i += 1; showFlag(); } };
+    if (to > from) {
+      flags.stop = to;
+      Sound.burn(0, from === 0);
+      scene.fly(from, to, TIERS[0].color, () => setTimeout(next, 250));
+    } else setTimeout(next, 700); // past Andromeda the count still climbs
+  }
+  function endFlags(why, other = null) {
+    const f = flags.order[flags.i], prev = store.flagsBest || 0;
+    flags.phase = 'over';
+    signal.classList.add('is-off');
+    store.flagsBest = Math.max(prev, flags.named);
+    save();
+    if (why !== 'all') { scene.sputter(); Sound.misfire(); Buzz.go([30, 40, 30]); }
+    const head = why === 'all' ? 'Every flag named.' : why === 'time' ? 'Time ran out.' : `Not ${other.name}.`;
+    const line = why === 'all' ? `You named all ${flags.named} flags.` : `This was the flag of ${f.name}.`;
+    const tally = `You named <b>${flags.named}</b> flag${flags.named === 1 ? '' : 's'}.${flags.named > prev ? ' A new best.' : ` Your best is ${store.flagsBest}.`}`;
+    consoleEl.innerHTML = `
+      <div class="card">
+        <p class="eyebrow"><span>Flags</span><span>Run over</span></p>
+        <h2 class="prompt" id="prompt-text" tabindex="-1">${esc(head)}</h2>
+        ${why !== 'all' ? `<div class="flag-frame is-small" role="img" aria-label="The flag of ${esc(f.name)}">${f.svg}</div>` : ''}
+        <p class="note">${esc(line)}</p>
+        <p class="note">${tally}</p>
+      </div>
+      <button type="button" class="btn btn-wide" id="flags-again">Fly again</button>
+      <button type="button" class="btn-line btn-wide" id="flags-home">Home</button>`;
+    $('flags-again').addEventListener('click', () => openFlags());
+    $('flags-home').addEventListener('click', () => showHome(true));
+    announce(`${head} ${line} You named ${flags.named}.`);
+    $('prompt-text').focus({ preventScroll: true });
+  }
+  // the clock stops while the rules are open or the page is away
+  function flagsFrame(t) {
+    const dt = flags.prevT ? t - flags.prevT : 0;
+    flags.prevT = t;
+    if (flags.phase !== 'scan') return;
+    if (!helpEl.hidden || document.hidden) { flags.deadline += dt; return; }
+    const left = Math.max(0, flags.deadline - t);
+    signalFill.style.transform = `scaleX(${left / FLAG_MS})`;
+    const secs = Math.ceil(left / 1000), low = left < 5000;
+    signalFill.classList.toggle('is-low', low);
+    if (secs !== flags.lastSecs) {
+      flags.lastSecs = secs;
+      signalNum.textContent = String(secs);
+      if (secs === 10 || secs === 5) announce(`${secs} seconds left`);
+      if (low && secs > 0) Sound.tick();
+    }
+    if (left <= 0) endFlags('time');
+  }
+
   // ---------- main loop ----------
   function frame(t) {
     tickNextClock(t);
@@ -5674,6 +5889,7 @@
     if (logEl.hidden && hangarEl.hidden && helpEl.hidden && !planView.open && !document.hidden) { scene.frame(t); updateOdometer(t); }
     if (!hangarEl.hidden && !document.hidden) drawShowcase(t);
     if (state.screen === 'party') partyFrame(t);
+    else if (state.screen === 'flags') flagsFrame(t);
     else if (state.screen === 'flight') {
       if (state.phase === 'read') {
         if (t >= state.readUntil) { state.phase = 'scan'; state.deadline = t + BURN_MS; }
@@ -5706,6 +5922,7 @@
   let endArmedUntil = 0;
   $('btn-end').addEventListener('click', () => {
     if (state.screen === 'party') { leaveParty(); return; }
+    if (state.screen === 'flags') { showHome(true); return; }
     if (state.screen !== 'flight' || !state.run) return;
     const btn = $('btn-end');
     if (performance.now() > endArmedUntil) {
@@ -5755,7 +5972,7 @@
       // the clock keeps running in real time while the page is away, as it does in an open tab
       left: Math.round(timeLeft()),
       at: Date.now(),
-      run: r ? { mode: r.mode, ids: r.prompts.map(p => p.id), results: r.results, stop: r.stop, thrust: r.thrust, firsts: r.firsts, daily: r.daily, practice: r.practice, topped: !!r.topped, recorded: !!r.recorded, isBest: !!r.isBest, points: r.points || 0, unlocked: r.unlocked || [], plan: r.plan || null, past: r.past || null } : null,
+      run: r ? { mode: r.mode, ids: r.prompts.map(p => p.id), results: r.results, stop: r.stop, thrust: r.thrust, firsts: r.firsts, daily: r.daily, practice: r.practice, topped: !!r.topped, recorded: !!r.recorded, isBest: !!r.isBest, points: r.points || 0, unlocked: r.unlocked || [], plan: r.plan || null, past: r.past || null, cat: r.cat || null } : null,
     };
   }
   function restore(data) {
@@ -5780,6 +5997,9 @@
     // an earlier day's flight flown again keeps its day, or carries on as a free flight
     if (state.run.mode === 'past' && !realDay(state.run.past)) state.run.mode = 'free';
     if (state.run.mode !== 'past') delete state.run.past;
+    // a category flight whose category is gone carries on as a free flight
+    if (state.run.mode === 'cat' && !CAT_NAME.has(state.run.cat)) state.run.mode = 'free';
+    if (state.run.mode !== 'cat') delete state.run.cat;
     Object.assign(ghost, { d: 0, rise: 0 });
     for (const r of state.run.results) {
       r.fresh = (r.fresh || []).filter(id => ROCKET_BY_ID.has(id));
