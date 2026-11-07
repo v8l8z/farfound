@@ -5049,13 +5049,20 @@
     try { b.focus({ preventScroll: true }); } catch (e) { b.focus(); }
     b.scrollIntoView({ block: 'nearest' });
   }
-  // the scope shows the race leader at their stop, or in Orbit the player whose turn it is on the launch pad
-  function partyScene(i = 0) {
-    let stop = 0;
-    if (party.mode === 'race') { i = leaders()[0]; stop = placeOf(party.thrust[i]).stop; }
+  // the scope shows the race leader at their stop, or in Orbit the player whose turn it is on the launch pad.
+  // fly: the round's thrust has just been added, so the leader's rocket flies there (launching from the pad, on to a
+  // new stop, or a short burn toward the next one) instead of appearing there; a flight under way finishes on its own
+  function partyScene(i = 0, fly = false) {
+    let stop = 0, frac = 0;
+    if (party.mode === 'race') { i = leaders()[0]; ({ stop, frac } = placeOf(party.thrust[i])); }
     scene.rocket = rocketOf(i);
-    if (scene.stop !== stop || scene.view !== 'stop') scene.setStop(stop);
+    const view = frac > 0 && stop > 0 && stop < LAST ? 'cruise' : 'stop';
+    if (scene.cine) { setHud(); return; }
     scene.calm();
+    const was = scene.view === 'cruise' ? scene.frac : 0;
+    if (fly && stop > scene.stop) scene.fly(scene.stop, stop, TIERS[0].color, null, false, view === 'cruise' ? frac : 0);
+    else if (fly && stop === scene.stop && stop > 0 && frac > was) scene.nudge(frac, TIERS[0].color, null);
+    else if (scene.stop !== stop || scene.view !== view || scene.frac !== frac) scene.setStop(stop, frac, view);
     setHud();
   }
 
@@ -5443,7 +5450,7 @@
     P.res.gains.forEach((g, i) => { P.thrust[i] += g; });
     P.last = P.res.gains.slice();
     P.res = null; // added once: a reload from here on shows the standings
-    if (P.round + 1 >= P.rounds) showFinal(); else showStandings();
+    if (P.round + 1 >= P.rounds) showFinal(true); else showStandings(true);
   }
   function standHtml() {
     const P = party, order = everyone().sort((a, b) => P.thrust[b] - P.thrust[a] || a - b);
@@ -5452,10 +5459,11 @@
       return `<li${rank === 1 ? ' class="is-lead"' : ''}><span class="pt-rank">${rank}</span>${thumbOf(i)}<span class="pt-who"><b>${esc(nameOf(i))}</b><span>${esc(ROUTE[pl.stop].name)}</span></span><span class="pt-num">${P.thrust[i]}<small>thrust</small>${P.last[i] ? `<i>+${P.last[i]}</i>` : ''}</span></li>`;
     }).join('')}</ol>`;
   }
-  function showStandings() {
+  // fly: straight after a round, so the leader's rocket flies to where the thrust takes it
+  function showStandings(fly = false) {
     const P = party, top = leaders(), max = P.thrust[top[0]];
     P.phase = 'standings';
-    partyScene();
+    partyScene(0, fly);
     const head = !max ? 'Still on the launch pad' : top.length === P.players.length ? 'All level' : top.length > 1 ? `${listJoin(top.map(nameOf))} share the lead` : `${nameOf(top[0])} leads`;
     calm();
     consoleEl.innerHTML = `
@@ -5474,10 +5482,10 @@
     announce(`Standings after round ${P.round + 1}. ${head}.`);
     saveParty();
   }
-  function showFinal() {
+  function showFinal(fly = false) {
     const P = party, top = leaders(), max = P.thrust[top[0]];
     P.phase = 'final';
-    partyScene();
+    partyScene(0, fly);
     const head = !max ? 'Nobody left the launch pad' : top.length > 1 ? `${listJoin(top.map(nameOf))} share the win` : `${nameOf(top[0])} wins the race`;
     const where = !max ? 'Every answer misfired or jammed.' : `${top.length > 1 ? 'Each reached' : `${nameOf(top[0])} reached`} ${stopName(placeOf(max).stop)} with ${max} thrust.`;
     calm();
