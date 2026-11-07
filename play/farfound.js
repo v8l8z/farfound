@@ -3206,7 +3206,7 @@
           <li>Every answer adds thrust, and the rarer the logbook rates it, the more it adds. Each stop takes a row of thrust cells, and the rows get longer the further you fly, from 4 cells among the planets to 7 across the galaxy. Thrust you don't use carries on toward the next stop. A very rare answer that isn't in the logbook yet goes Off the Charts for ${OFF_BONUS} extra thrust, up to twice a flight.
             <ul class="rules-tiers">${TIERS.map(t => `<li style="--cls:${t.color}"><b>${t.name}</b><span>+${t.thrust} thrust</span></li>`).join('')}</ul>
           </li>
-          <li>Answers count in any common spelling. If an answer doesn't fit, you can give another before the bar runs out. Skipping or running out of time is a misfire and adds no thrust.</li>
+          <li>Answers count in any common spelling. If an answer doesn't fit, you can give another before the bar runs out. Hint shows one common answer, which flies the shortest way. Running out of time is a misfire and adds no thrust.</li>
           <li>Today's flight has the same prompts for everyone, and only your first start each day counts. You can take free flights as often as you like. Past flights, under Today's flight, holds the last ${PAST_DAYS} days' flights: one you haven't flown earns points like a free flight, and one you have is practice.</li>
           <li>${POINTS_RULE} Rockets in the hangar unlock as your total grows, and unlocking one never uses up points.</li>
         </ol>
@@ -3591,13 +3591,13 @@
         <label class="sr-only" for="answer">Your answer</label>
         <input id="answer" name="answer" maxlength="60" placeholder="Type an answer" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="send" dir="auto" aria-describedby="prompt-text feedback">
         <button class="btn" type="submit" id="btn-log">${run.stop === 0 ? 'Ignite' : 'Burn'}</button>
-        <button class="btn-line" type="button" id="btn-skip-scan" aria-label="Skip this prompt">Skip</button>
+        <button class="btn-line" type="button" id="btn-hint" aria-label="Show a hint: one common answer">Hint</button>
       </form>
       <p class="feedback" id="feedback"></p>`;
     const input = $('answer');
     input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); });
     $('answer-form').addEventListener('submit', e => { e.preventDefault(); submit(input.value); });
-    $('btn-skip-scan').addEventListener('click', () => { if (state.phase === 'read' || state.phase === 'scan') miss('skip'); });
+    $('btn-hint').addEventListener('click', () => { if (state.phase === 'read' || state.phase === 'scan') showHint(p); });
     announce(`Burn ${run.results.length + 1} of ${BURNS}. ${p.day ? 'Space anniversary. ' : ''}${topped ? `${sentence(p.text)} Topped up with other cards.` : p.text}`);
     focusAnswer(input);
     persistLive();
@@ -3624,7 +3624,26 @@
     if (!form) return;
     form.setAttribute('aria-busy', String(!on));
     $('btn-log').disabled = !on;
-    $('btn-skip-scan').disabled = !on;
+    $('btn-hint').disabled = !on || $('btn-hint').classList.contains('is-used');
+  }
+  // Hint names one common answer (never the prompt's own example), once per prompt. A common answer flies the shortest
+  // way, so using it is its own price
+  function hintFor(p) {
+    const ex = p.examples || [];
+    for (const tier of [0, 1, 2]) {
+      const pool = p.entries.filter(e => !e.judged && TIER_MAP[e.tier] === tier && !ex.includes(key(e.name)));
+      if (pool.length) return pool[Math.floor(Math.random() * Math.min(pool.length, 6))].name;
+    }
+    return '';
+  }
+  function showHint(p) {
+    const b = $('btn-hint'), name = hintFor(p);
+    if (!b || b.classList.contains('is-used')) return;
+    b.classList.add('is-used');
+    b.disabled = true;
+    const m = name ? `Try something like ${name}.` : 'No hint for this one.';
+    setFeedback(m, 'is-hint');
+    announce(m);
   }
   function selectInput() { const input = $('answer'); if (input && !input.disabled) input.select(); }
 
@@ -4765,7 +4784,7 @@
     endLock(true);
     if (scene.cine) { scene.cine = null; $('caption-slot').innerHTML = ''; }
     scene.calm();
-    calm(); // the second tap of a double tap on Fly it would land on Skip for the first prompt
+    calm(); // the second tap of a double tap on Fly it would land on Hint for the first prompt
     if (!store.helpSeen) { planView.queued = P; openHelp('duel'); return; }
     startFlight('duel', P);
   }
