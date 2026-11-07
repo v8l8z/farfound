@@ -271,6 +271,8 @@
   .answer-row .hint-btn { flex: 0 0 auto; width: 52px; height: auto; align-self: stretch; }
   .hint-btn svg { width: 22px; height: 22px; }
   .hint-btn.is-used { opacity: 0.45; }
+  .hint-btn { position: relative; }
+  .hint-count { position: absolute; top: 3px; right: 6px; font-family: var(--f-data); font-size: 11px; line-height: 1; color: var(--ink-dim); }
   /* Flags: the flag big enough to read on a phone, on a thin frame so white flags still show their edge */
   .flag-row { display: flex; align-items: center; gap: 14px; }
   .flag-frame { flex: 0 0 auto; width: clamp(120px, 38%, 200px); aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px var(--rule); }

@@ -481,7 +481,7 @@
     return best;
   }
   function readStore(raw) {
-    const base = { muted: false, best: 0, bestT: 0, flights: 0, daily: {}, seen: [], points: 0, pointsScale: 2, rocket: 'dimestore', rocketsSeen: 1, helpSeen: false, cardsOff: [], partySetup: null, callsign: null, bestStreak: 0, dailyFlown: 0, bestDaily: 0, replayDays: [], flagsBest: 0 };
+    const base = { muted: false, best: 0, bestT: 0, flights: 0, daily: {}, seen: [], points: 0, pointsScale: 2, rocket: 'dimestore', rocketsSeen: 1, helpSeen: false, cardsOff: [], partySetup: null, callsign: null, bestStreak: 0, dailyFlown: 0, bestDaily: 0, replayDays: [], flagsBest: 0, flagsRun: null };
     try {
       const saved = JSON.parse(raw || '{}');
       const best = Number.isInteger(saved.best) ? clamp(saved.best, 0, LAST) : 0;
@@ -513,6 +513,8 @@
         replayDays: Array.isArray(saved.replayDays) ? saved.replayDays.filter(Number.isInteger).slice(-30) : [],
         // the most flags named in one Flags run
         flagsBest: whole(saved.flagsBest),
+        // a Flags run left part way, to continue (checked against the flags when it is opened)
+        flagsRun: saved.flagsRun && typeof saved.flagsRun === 'object' && Array.isArray(saved.flagsRun.codes) && Number.isInteger(saved.flagsRun.i) && saved.flagsRun.i < saved.flagsRun.codes.length ? saved.flagsRun : null,
       };
     } catch (e) { return base; }
   }
@@ -2844,10 +2846,10 @@
     ...[...new Set([...Object.keys(CATS), ...PROMPTS.map(p => p.cat)])].map(k => ({ key: k, name: CATS[k] || k })),
     ...PACK_LIST.map(k => ({ key: k.id, name: PACK_NAME.get(k.id), blurb: String(k.blurb || ''), pack: true })),
   ].filter(b => DRAWABLE.some(p => p.group === b.key));
-  // with everything switched off (only an edited save can do that) the bay reads as all on
+  // The payload bay is gone from Home (categories took its place), so Launch and games together draw from every card
+  // type and pack; card types switched off in an older save no longer narrow anything
   function bayOn() {
-    const off = new Set(store.cardsOff), on = BAY.filter(b => !off.has(b.key));
-    return new Set((on.length ? on : BAY).map(b => b.key));
+    return new Set(BAY.map(b => b.key));
   }
   // every drawable prompt except yesterday's, today's and tomorrow's flights, day cards included
   // (a free flight's log lists each prompt's answers, so tomorrow's can't be looked up a day early)
@@ -3496,7 +3498,6 @@
         <p class="lede">Give answers that few people would think of. Rare answers burn more thrust, and your rocket flies further along ${LAST} real stops between a launch pad on Earth and the Andromeda galaxy.</p>
       </div>
       <button type="button" class="btn btn-wide" id="btn-launch">Launch</button>
-      ${bayHtml()}
       <div class="today">
         <button type="button" class="mode${done ? ' is-done' : ''}" id="btn-daily">
           <span class="mode-name">Today's flight</span>
@@ -3513,8 +3514,9 @@
         <h2 class="section-title" id="cats-title">Categories</h2>
         <div class="modes">
           ${CATEGORIES.filter(c => categoryReady(c.key)).map(c => `<button type="button" class="mode" data-cat="${esc(c.key)}"><span class="mode-name">${esc(c.name)}</span><span class="mode-desc">${esc(c.blurb || '')}</span></button>`).join('')}
-          <button type="button" class="mode" id="btn-flags"><span class="mode-name">Flags</span><span class="mode-desc">Name the country. Every right answer flies you on; one wrong answer ends the run.${store.flagsBest ? ` Your best is ${store.flagsBest}.` : ''}</span></button>
+          <button type="button" class="mode" id="btn-flags"><span class="mode-name">Flags</span><span class="mode-desc">${flagsSaved() ? `Continue your run: ${flagsSaved().named} named, ${flagsSaved().hints} hint${flagsSaved().hints === 1 ? '' : 's'} left.` : 'Name the country. Every right answer flies you on; one wrong answer ends the run.'}${store.flagsBest ? ` Your best is ${store.flagsBest}.` : ''}</span></button>
         </div>
+        ${flagsSaved() ? '<p class="foot"><button type="button" class="link-btn" id="btn-flags-new">Start a new Flags run</button></p>' : ''}
       </section>
       <section class="together" aria-labelledby="together-title">
         <h2 class="section-title" id="together-title">Play together</h2>
@@ -3534,8 +3536,6 @@
     nextClock.day = today;
     fillIcons(consoleEl);
     $('btn-launch').addEventListener('click', () => launch('free'));
-    $('bay-head').addEventListener('click', () => openBay(!bay.open));
-    BAY.forEach((b, i) => $(`bay-sw-${i}`).addEventListener('click', () => flipBay(b.key)));
     $('btn-daily').addEventListener('click', () => launch('daily'));
     $('past-head').addEventListener('click', () => openPast(!pastOpen()));
     for (const b of consoleEl.querySelectorAll('.past-fly')) b.addEventListener('click', () => flyPast(b.dataset.day));
@@ -3543,7 +3543,8 @@
     $('btn-race').addEventListener('click', () => openParty('race'));
     $('btn-orbit').addEventListener('click', () => openParty('orbit'));
     for (const b of consoleEl.querySelectorAll('[data-cat]')) b.addEventListener('click', () => { Sound.unlock(); startFlight('cat', null, null, b.dataset.cat); });
-    $('btn-flags').addEventListener('click', () => openFlags());
+    $('btn-flags').addEventListener('click', () => openFlags(true));
+    if ($('btn-flags-new')) $('btn-flags-new').addEventListener('click', () => openFlags(false));
     wirePaste();
     if (had && $(had)) $(had).focus({ preventScroll: true });
   }
@@ -3564,6 +3565,7 @@
   }
 
   function showHome(fromUser = false) {
+    if (state.screen === 'flags' && flags.phase === 'scan') saveFlagsRun();
     cancelCheck();
     app.inert = false;
     state.screen = 'home';
@@ -5115,7 +5117,7 @@
       </div>
       <button type="button" class="btn btn-wide" id="pt-start">${race ? 'Start the race' : 'Start the orbit'}</button>
       <button type="button" class="btn-line" id="pt-back">Back</button>
-      <p class="foot">Prompts come from your payload bay. Games together never earn points.</p>`;
+      <p class="foot">Prompts come from the general mix. Games together never earn points.</p>`;
     s.players.forEach((p, i) => {
       const input = $(`pt-name-${i}`);
       input.addEventListener('input', () => { p.name = input.value.slice(0, NAME_MAX); });
@@ -5722,11 +5724,21 @@
   // another country's name, or the clock running out, ends the run. A word that names no country costs only time.
   const FLAG_MS = 20000;
   let FLAGS = null;
-  const flags = { order: [], i: 0, named: 0, stop: 0, phase: 'idle', deadline: 0, lastSecs: 0, prevT: 0 };
+  const FLAG_HINTS = 3; // per run: each names the flag's continent and first letter, one per flag
+  const flags = { order: [], i: 0, named: 0, stop: 0, hints: FLAG_HINTS, hinted: false, phase: 'idle', deadline: 0, lastSecs: 0, prevT: 0 };
+  // A run left part way is kept, so the Flags button can carry on from the same flag with the time that was left (no
+  // fresh clock to look a flag up with), the count, the stop and the hints. It goes once the run ends.
+  function saveFlagsRun(left = Math.max(0, flags.deadline - performance.now())) {
+    store.flagsRun = { codes: flags.order.map(f => f.code), i: flags.i, named: flags.named, stop: flags.stop, hints: flags.hints, left: Math.round(left) };
+    save();
+  }
+  const flagsSaved = () => (store.flagsRun ? { named: whole(store.flagsRun.named), hints: clamp(store.flagsRun.hints | 0, 0, FLAG_HINTS) } : null);
+  addEventListener('pagehide', () => { if (state.screen === 'flags' && flags.phase === 'scan') saveFlagsRun(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && state.screen === 'flags' && flags.phase === 'scan') saveFlagsRun(); });
   function loadFlags() {
-    const build = () => (FLAGS = list(window.FARFOUND_FLAGS).filter(r => Array.isArray(r) && r.length >= 3).map(([code, names, svg, level]) => {
+    const build = () => (FLAGS = list(window.FARFOUND_FLAGS).filter(r => Array.isArray(r) && r.length >= 3).map(([code, names, svg, level, region]) => {
       const all = String(names).split('=').map(n => n.trim()).filter(Boolean);
-      return { code: String(code), name: all[0], keys: all.map(key).filter(Boolean), svg: String(svg), level: clamp(Math.round(Number(level) || 4), 1, 5) };
+      return { code: String(code), name: all[0], keys: all.map(key).filter(Boolean), svg: String(svg), level: clamp(Math.round(Number(level) || 4), 1, 5), region: String(region || '') };
     }));
     if (FLAGS) return Promise.resolve(FLAGS);
     if (window.FARFOUND_FLAGS) return Promise.resolve(build());
@@ -5773,7 +5785,8 @@
     }
     return [...out, ...left];
   }
-  async function openFlags() {
+  // resume: carry on a saved run if there is one; a run that no longer fits the flags starts afresh
+  async function openFlags(resume = true) {
     Sound.unlock();
     try { await loadFlags(); } catch (e) { announce('The flags could not load. Try again in a moment.'); return; }
     if (!FLAGS.length) return;
@@ -5787,22 +5800,29 @@
     logEl.hidden = true;
     app.classList.remove('is-home');
     window.scrollTo(0, 0);
-    Object.assign(flags, { order: flagOrder(), i: 0, named: 0, stop: 0 });
+    const s = resume ? store.flagsRun : null, byCode = new Map(FLAGS.map(f => [f.code, f]));
+    const order = s ? s.codes.map(c => byCode.get(c)) : null;
+    let left = FLAG_MS;
+    if (order && order.length === FLAGS.length && order.every(Boolean)) {
+      Object.assign(flags, { order, i: clamp(s.i, 0, order.length - 1), named: whole(s.named), stop: clamp(s.stop | 0, 0, LAST), hints: clamp(s.hints | 0, 0, FLAG_HINTS) });
+      left = clamp(Number(s.left) || FLAG_MS, 1000, FLAG_MS);
+    } else Object.assign(flags, { order: flagOrder(), i: 0, named: 0, stop: 0, hints: FLAG_HINTS });
     if (scene.cine) { scene.cine = null; $('caption-slot').innerHTML = ''; }
     scene.calm();
-    scene.setStop(0);
+    scene.setStop(flags.stop);
     setHud();
     pipsEl.innerHTML = '';
-    showFlag();
+    showFlag(left);
   }
-  function showFlag() {
+  function showFlag(left = FLAG_MS) {
     const f = flags.order[flags.i];
     if (!f) { endFlags('all'); return; }
-    Object.assign(flags, { phase: 'scan', deadline: performance.now() + FLAG_MS, lastSecs: 0 });
+    Object.assign(flags, { phase: 'scan', deadline: performance.now() + left, lastSecs: 0, hinted: false });
+    saveFlagsRun(left);
     signal.classList.remove('is-off');
     signalFill.classList.remove('is-low');
-    signalFill.style.transform = 'scaleX(1)';
-    signalNum.textContent = String(FLAG_MS / 1000);
+    signalFill.style.transform = `scaleX(${left / FLAG_MS})`;
+    signalNum.textContent = String(Math.ceil(left / 1000));
     readout.textContent = `Flags ${flags.named}`;
     consoleEl.innerHTML = `
       <div class="card">
@@ -5816,6 +5836,7 @@
         <label class="sr-only" for="flag-answer">The country</label>
         <input id="flag-answer" maxlength="60" placeholder="Type the country" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="send" dir="auto" aria-describedby="prompt-text flag-feedback">
         <button class="btn" type="submit" id="flag-go">${flags.stop === 0 ? 'Ignite' : 'Burn'}</button>
+        <button class="icon-btn hint-btn${flags.hints ? '' : ' is-used'}" type="button" id="flag-hint" aria-label="Hint, ${flags.hints} left"${flags.hints ? '' : ' disabled'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg><span class="hint-count" aria-hidden="true">${flags.hints}</span></button>
       </form>
       <p class="feedback" id="flag-feedback">One wrong country ends the run.</p>`;
     const input = $('flag-answer');
@@ -5823,8 +5844,25 @@
     $('flag-form').addEventListener('submit', e => { e.preventDefault(); flagAnswer(input.value); });
     // pressing Burn keeps the box focused: otherwise the answer row drops back down the page mid-press and the tap misses
     $('flag-go').addEventListener('mousedown', e => { if (document.activeElement === input) e.preventDefault(); });
+    $('flag-hint').addEventListener('click', () => flagHint(f));
     announce(`Flag ${flags.i + 1}. Whose flag is this?`);
     focusAnswer(input);
+  }
+  // the continent and first letter, once per flag and up to FLAG_HINTS a run
+  function flagHint(f) {
+    const b = $('flag-hint');
+    if (flags.phase !== 'scan' || flags.hinted || flags.hints <= 0 || !b) return;
+    flags.hints -= 1;
+    flags.hinted = true;
+    b.disabled = true;
+    b.classList.add('is-used');
+    b.setAttribute('aria-label', `Hint, ${flags.hints} left`);
+    b.querySelector('.hint-count').textContent = String(flags.hints);
+    const fb = $('flag-feedback');
+    fb.className = 'feedback is-hint';
+    fb.textContent = `${f.region ? `In ${f.region}, s` : 'S'}tarts with ${f.name[0].toUpperCase()}.`;
+    announce(`${fb.textContent} ${flags.hints} hint${flags.hints === 1 ? '' : 's'} left.`);
+    saveFlagsRun();
   }
   function flagAnswer(text) {
     if (flags.phase !== 'scan') return;
@@ -5849,6 +5887,11 @@
     $('flag-go').disabled = true;
     readout.textContent = `Flags ${flags.named}`;
     announce(`Yes, ${f.name}. ${flags.named} named.`);
+    flags.i += 1;
+    flags.stop = to;
+    saveFlagsRun(FLAG_MS);
+    flags.i -= 1;
+    flags.stop = from;
     Sound.climb(1);
     const next = () => { if (state.screen === 'flags' && flags.phase === 'fly') { flags.i += 1; showFlag(); } };
     if (to > from) {
@@ -5862,6 +5905,7 @@
     flags.phase = 'over';
     signal.classList.add('is-off');
     store.flagsBest = Math.max(prev, flags.named);
+    store.flagsRun = null;
     save();
     if (why !== 'all') { scene.sputter(); Sound.misfire(); Buzz.go([30, 40, 30]); }
     const head = why === 'all' ? 'Every flag named.' : why === 'time' ? 'Time ran out.' : `Not ${other.name}.`;
@@ -5877,7 +5921,7 @@
       </div>
       <button type="button" class="btn btn-wide" id="flags-again">Fly again</button>
       <button type="button" class="btn-line btn-wide" id="flags-home">Home</button>`;
-    $('flags-again').addEventListener('click', () => openFlags());
+    $('flags-again').addEventListener('click', () => openFlags(false));
     $('flags-home').addEventListener('click', () => showHome(true));
     announce(`${head} ${line} You named ${flags.named}.`);
     $('prompt-text').focus({ preventScroll: true });
