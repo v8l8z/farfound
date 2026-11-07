@@ -2870,26 +2870,36 @@
     }
     return out;
   }
-  // n prompts from the switched-on card types and packs, also for Space Race and Orbit. useSeen (free flights only):
-  // unseen prompts first, recycling just this pool's seen ones once few are left, and what is drawn counts as seen.
-  // A pool smaller than n is topped up from the other prompts, and the result is marked .topped.
+  // The least recently seen come first: prompts never seen in a random order, then the ones seen longest ago. So a
+  // prompt comes back only once every other prompt in its pool has had its turn. seen keeps the order prompts were last
+  // dealt in (most recent last); markSeen moves a prompt to the end.
+  function byRecency(ps, rand = Math.random) {
+    const at = new Map();
+    let i = 0;
+    for (const id of seen) at.set(id, i++);
+    const rank = p => (at.has(p.id) ? at.get(p.id) : -1);
+    return shuffle(ps.slice(), rand).sort((a, b) => rank(a) - rank(b));
+  }
+  function markSeen(ps) {
+    for (const p of ps) { seen.delete(p.id); seen.add(p.id); }
+    store.seen = [...seen];
+    save();
+  }
+  // n prompts from the switched-on card types and packs, for free flights, Space Race and Orbit: least recently seen
+  // first, one per card type before any card type gets two, and what is drawn counts as seen (useSeen false leaves
+  // seen alone). A pool smaller than n is topped up from the other prompts, and the result is marked .topped.
   // group: draw from that one card type or pack instead (Bring a card); not: prompt ids to leave out
-  function drawPrompts(n, { rand = Math.random, useSeen = false, group = '', not = null } = {}) {
+  function drawPrompts(n, { rand = Math.random, useSeen = true, group = '', not = null } = {}) {
     const all = not ? freePool().filter(p => !not.has(p.id)) : freePool(), on = group ? new Set([group]) : bayOn();
     const mine = all.filter(p => on.has(p.group)), rest = all.filter(p => !on.has(p.group));
-    const fresh = ps => (useSeen ? ps.filter(p => !seen.has(p.id)) : ps), stale = ps => (useSeen ? ps.filter(p => seen.has(p.id)) : []);
+    const order = ps => byRecency(ps, rand);
     const per = {}, out = [];
-    // fresh prompts win over variety: a stale one comes in only when the fresh ones run out
-    let first = fresh(mine), then = [];
-    if (useSeen && first.length < n + 4) { then = stale(mine); for (const p of then) seen.delete(p.id); }
-    spread(shuffle(first, rand), n, per, out);
-    spread(shuffle(then, rand), n, per, out);
+    spread(order(mine), n, per, out);
     if (out.length < n) {
-      spread(shuffle(fresh(rest), rand), n, per, out);
-      spread(shuffle(stale(rest), rand), n, per, out);
+      spread(order(rest), n, per, out);
       shuffle(out, rand).topped = true;
     }
-    if (useSeen) { for (const p of out) seen.add(p.id); store.seen = [...seen]; save(); }
+    if (useSeen) markSeen(out);
     return out;
   }
   function pickPrompts(rand, useSeen) { return drawPrompts(BURNS, { rand, useSeen }); }
@@ -2904,14 +2914,11 @@
     return pool.filter((p, i) => !near.has(p.id) && pool.indexOf(p) === i);
   }
   const categoryReady = key => categoryPool(key).length >= BURNS;
-  // unseen prompts first, in a fresh shuffle; they count as seen once dealt
+  // least recently seen first, as in a free flight; they count as seen once dealt
   function drawCategory(key) {
-    const pool = shuffle(categoryPool(key), Math.random);
-    const out = [...pool.filter(p => !seen.has(p.id)), ...pool.filter(p => seen.has(p.id))].slice(0, BURNS);
-    for (const p of out) seen.add(p.id);
-    store.seen = [...seen];
-    save();
-    return out;
+    const out = byRecency(categoryPool(key)).slice(0, BURNS);
+    markSeen(out);
+    return shuffle(out);
   }
 
   // ---------- today's flight ----------
@@ -3596,10 +3603,10 @@
     if (mode === 'duel' || mode === 'past') {
       if (mode === 'duel') run.plan = plan; else run.past = day;
       run.prompts = mode === 'duel' ? plan.ids.map(id => BY_ID.get(id)) : flightFor(day);
-      // flown like a free flight, its prompts count as seen
-      if (!asDaily) { for (const p of run.prompts) seen.add(p.id); store.seen = [...seen]; }
     } else if (mode === 'cat') { run.cat = cat; run.prompts = drawCategory(cat); }
     else run.prompts = mode === 'daily' ? flightFor(today) : pickPrompts(Math.random, true);
+    // whatever the flight, its prompts are now the most recently seen, so no other mode deals them again soon
+    markSeen(run.prompts);
     if (run.prompts.topped) run.topped = true;
     store.flights += 1;
     save();
@@ -5175,11 +5182,11 @@
   // one more prompt for a game together from the payload bay, never one it has had already unless the pool runs dry.
   // With a card (Bring a card) it stays on that card, bringing back one of the last race's before it plays another card
   function partyPrompt(not, group = '', race = not) {
-    const draw = s => drawPrompts(1, { group, not: s })[0], fits = p => !!p && (!group || p.group === group);
-    const a = draw(not);
-    if (fits(a)) return a.id;
-    const b = draw(race);
-    return (fits(b) ? b : a || b || drawPrompts(1, { group })[0]).id;
+    const draw = s => drawPrompts(1, { group, not: s, useSeen: false })[0], fits = p => !!p && (!group || p.group === group);
+    const a = draw(not), b = fits(a) ? null : draw(race);
+    const p = fits(a) ? a : fits(b) ? b : a || b || drawPrompts(1, { group, useSeen: false })[0];
+    markSeen([p]);
+    return p.id;
   }
 
   // ---- a turn: pass the phone, then the prompt and the clock ----
