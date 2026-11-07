@@ -97,6 +97,24 @@
   // told to name a particular one instead of being refused, keyed by the prompt's text. Each string lists them with ";"
   // and joins other spellings with "=", like a tier
   const GENERAL = new Map(Object.entries(DATA.general || {}).map(([text, s]) => [text, new Set(String(s).split(';').flatMap(g => g.split('=')).map(w => key(w)).filter(Boolean))]));
+  // The lightbulb gives hints now, so a prompt shows no example in brackets. Brackets that set the rules (what counts,
+  // what doesn't, how a wordplay works, or the context a prompt needs) stay; any other is left out of the shown text,
+  // and the answer it named becomes a fair answer like any other. The full text still names the prompt (its id, the
+  // deck, flight plans and the too-general list), so saves and links made before keep working.
+  const KEEP_BRACKETS = new Set(['Einstein counts, Van Gogh doesn\'t', 'Jupiter\'s four big moons count, so do the Beatles', 'Mike, Mikhail and Miguel count',
+    'Pluto counts, so does Nike', 'a crane counts, so does the VW Beetle', 'a promise counts', 'a speech counts', 'alpha counts, so does alif', 'any sport',
+    'balls don\'t count', 'birds and fish count', 'camels don\'t count', 'cities count', 'countries the Equator crosses count', 'curries count',
+    'droids and creatures count', 'evaporation and lightning count', 'fastest, biggest, loudest, longest-lived, anything', 'film composers don\'t count',
+    'galaxies count, so do chickens', 'gemstones count', 'goalkeeper counts, so does point guard', 'like fridge, not TV', 'like phone, not fourteen',
+    'no ferries, and the Channel Tunnel doesn\'t count', 'no zoom lens', 'not a vehicle', 'oceans don\'t count', 'old units count', 'on any planet or moon',
+    'our Moon counts', 'paper money and the fork count', 'passports count', 'people and organisations count', 'people, animals and vehicles all count',
+    'photographers and cartoonists count', 'salt and black pepper don\'t count', 'slang counts', 'slang, coins and currencies count', 'so not the Moon',
+    'spaceships count', 'spider and happiness count', 'spring rolls count', 'the Sun counts', 'the Vatican counts', 'the building of the pyramids counts',
+    'the dodo and The Last Supper both count', 'the highest mountain in Africa counts', 'the mammoth counts, the dodo doesn\'t', 'the space station cost over 100 billion',
+    'toothpaste and bowling count', 'wind counts', 'K2 and Buzz Aldrin both count', 'Texas and Converse both count', 'Saturn and Sputnik count', 'Webb\'s mirrors count',
+    'Voyager\'s Golden Record has a kiss and a heartbeat', 'the Mona Lisa was stolen in 1911', 'bubble wrap was meant to be wallpaper', 'the mistral counts',
+    'HTML counts', 'like bacon, from Ba, Co and N', 'like plate, which becomes late', 'like colour and color', 'like stressed and desserts']);
+  const shownText = text => text.replace(/\s*\(([^)]*)\)/g, (m, inner) => (KEEP_BRACKETS.has(inner) ? m : '')).trim();
   function bankPrompt([cat, diff, text, ...tiers]) {
     const entries = [];
     const index = new Map();
@@ -112,7 +130,8 @@
         for (const k of keys) if (!index.has(k)) index.set(k, entry);
       }
     });
-    return { id: hashStr(text).toString(36), cat, diff, text, entries, index, examples: examplesOf(text), strict: SPELLING_RULE.test(text), general: GENERAL.get(text) || null };
+    const shown = shownText(text);
+    return { id: hashStr(text).toString(36), cat, diff, text: shown, entries, index, examples: examplesOf(shown), strict: SPELLING_RULE.test(text), general: GENERAL.get(text) || null };
   }
   const PROMPTS = DATA.prompts.map(bankPrompt);
   // prompts out of rotation still load, so a saved flight or an earlier day's flight that used one plays on
