@@ -3206,7 +3206,7 @@
           <li>Every answer adds thrust, and the rarer the logbook rates it, the more it adds. Each stop takes a row of thrust cells, and the rows get longer the further you fly, from 4 cells among the planets to 7 across the galaxy. Thrust you don't use carries on toward the next stop. A very rare answer that isn't in the logbook yet goes Off the Charts for ${OFF_BONUS} extra thrust, up to twice a flight.
             <ul class="rules-tiers">${TIERS.map(t => `<li style="--cls:${t.color}"><b>${t.name}</b><span>+${t.thrust} thrust</span></li>`).join('')}</ul>
           </li>
-          <li>Answers count in any common spelling. If an answer doesn't fit, you can give another before the bar runs out. Hint shows one common answer, which flies the shortest way. Running out of time is a misfire and adds no thrust.</li>
+          <li>Answers count in any common spelling. If an answer doesn't fit, you can give another before the bar runs out. The lightbulb shows one common answer, which flies the shortest way. Running out of time is a misfire and adds no thrust.</li>
           <li>Today's flight has the same prompts for everyone, and only your first start each day counts. You can take free flights as often as you like. Past flights, under Today's flight, holds the last ${PAST_DAYS} days' flights: one you haven't flown earns points like a free flight, and one you have is practice.</li>
           <li>${POINTS_RULE} Rockets in the hangar unlock as your total grows, and unlocking one never uses up points.</li>
         </ol>
@@ -3591,7 +3591,7 @@
         <label class="sr-only" for="answer">Your answer</label>
         <input id="answer" name="answer" maxlength="60" placeholder="Type an answer" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="send" dir="auto" aria-describedby="prompt-text feedback">
         <button class="btn" type="submit" id="btn-log">${run.stop === 0 ? 'Ignite' : 'Burn'}</button>
-        <button class="btn-line" type="button" id="btn-hint" aria-label="Show a hint: one common answer">Hint</button>
+        <button class="icon-btn hint-btn" type="button" id="btn-hint" aria-label="Hint: show one common answer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg></button>
       </form>
       <p class="feedback" id="feedback"></p>`;
     const input = $('answer');
