@@ -157,10 +157,35 @@
   for (const p of DRAWABLE) p.group = p.pack || p.cat;
   // category flights (farfound-categories.js): each category's own prompts sit outside free flights and Today's flight,
   // but they join BY_ID so a saved flight or a flight plan made from one plays on
+  // a category marked hidden keeps its prompts (so a saved flight from it still plays) but has no tile on Home
   const CATEGORIES = list(((typeof window === 'object' && window.FARFOUND_CATEGORIES) || {}).cats).filter(c => c && typeof c.key === 'string' && typeof c.name === 'string');
   const CAT_NAME = new Map(CATEGORIES.map(c => [c.key, c.name]));
-  const CAT_PROMPTS = CATEGORIES.flatMap(c => list(c.prompts).filter(rowOk).map(r => Object.assign(bankPrompt(r), { catFlight: c.key })));
-  for (const p of CAT_PROMPTS) if (!BY_ID.has(p.id)) BY_ID.set(p.id, p);
+  // The categories' own prompts are big, so they load after the game is on screen (farfound-cat-prompts.js): in the
+  // app straight away, on the web when a category is first opened. Until then a category counts its prompts from the
+  // list. A saved category flight, or a flight plan made from one, waits for them before it opens.
+  let CAT_PROMPTS = [], catLoad = null;
+  function loadCatPrompts() {
+    if (catLoad) return catLoad;
+    const take = () => {
+      const X = (typeof window === 'object' && window.FARFOUND_CAT_PROMPTS) || {};
+      for (const [text, words] of Object.entries(X.general || {})) {
+        if (!GENERAL.has(text)) GENERAL.set(text, new Set(String(words).split(';').flatMap(g => g.split('=')).map(w => key(w)).filter(Boolean)));
+      }
+      CAT_PROMPTS = CATEGORIES.flatMap(c => list((X.prompts || {})[c.key]).filter(rowOk).map(r => Object.assign(bankPrompt(r), { catFlight: c.key })));
+      for (const p of CAT_PROMPTS) if (!BY_ID.has(p.id)) BY_ID.set(p.id, p);
+      return CAT_PROMPTS;
+    };
+    if (typeof window === 'object' && window.FARFOUND_CAT_PROMPTS) return (catLoad = Promise.resolve(take()));
+    catLoad = new Promise(res => {
+      const el = document.createElement('script');
+      el.src = 'farfound-cat-prompts.js';
+      el.onload = () => res(take());
+      el.onerror = () => { catLoad = null; res(CAT_PROMPTS); }; // tried again on the next tap
+      document.head.appendChild(el);
+    });
+    return catLoad;
+  }
+  const catLoaded = () => CAT_PROMPTS.length > 0;
 
   const AR_RE = /[\u0600-\u06FF]/;
   // spaces removed but no singular: singular() reads machboos as machboo and leaves machbous alone
@@ -2915,7 +2940,12 @@
     const pool = [...PROMPTS.filter(p => kinds.has(p.cat) || texts.has(p.text)), ...CAT_PROMPTS.filter(p => p.catFlight === key)];
     return pool.filter((p, i) => !near.has(p.id) && pool.indexOf(p) === i);
   }
-  const categoryReady = key => categoryPool(key).length >= BURNS;
+  // before its prompts have loaded a category goes by the count in the list
+  const categoryReady = key => {
+    if (catLoaded()) return categoryPool(key).length >= BURNS;
+    const c = CATEGORIES.find(x => x.key === key);
+    return !!c && categoryPool(key).length + whole(c.count) >= BURNS;
+  };
   // least recently seen first, as in a free flight; they count as seen once dealt
   function drawCategory(key) {
     const out = byRecency(categoryPool(key)).slice(0, BURNS);
@@ -3513,7 +3543,7 @@
       <section class="cats" aria-labelledby="cats-title">
         <h2 class="section-title" id="cats-title">Categories</h2>
         <div class="modes">
-          ${CATEGORIES.filter(c => categoryReady(c.key)).map(c => `<button type="button" class="mode" data-cat="${esc(c.key)}"><span class="mode-name">${esc(c.name)}</span><span class="mode-desc">${esc(c.blurb || '')}</span></button>`).join('')}
+          ${CATEGORIES.filter(c => !c.hidden && categoryReady(c.key)).map(c => `<button type="button" class="mode" data-cat="${esc(c.key)}"><span class="mode-name">${esc(c.name)}</span><span class="mode-desc">${esc(c.blurb || '')}</span></button>`).join('')}
           <button type="button" class="mode" id="btn-flags"><span class="mode-name">Flags</span><span class="mode-desc">${flagsSaved() ? `Continue your run: ${flagsSaved().named} named, ${flagsSaved().hints} hint${flagsSaved().hints === 1 ? '' : 's'} left.` : 'Name the country. Every right answer flies you on; one wrong answer ends the run.'}${store.flagsBest ? ` Your best is ${store.flagsBest}.` : ''}</span></button>
         </div>
         ${flagsSaved() ? '<p class="foot"><button type="button" class="link-btn" id="btn-flags-new">Start a new Flags run</button></p>' : ''}
@@ -3542,7 +3572,14 @@
     $('btn-hangar').addEventListener('click', e => openHangar(e.currentTarget));
     $('btn-race').addEventListener('click', () => openParty('race'));
     $('btn-orbit').addEventListener('click', () => openParty('orbit'));
-    for (const b of consoleEl.querySelectorAll('[data-cat]')) b.addEventListener('click', () => { Sound.unlock(); startFlight('cat', null, null, b.dataset.cat); });
+    for (const b of consoleEl.querySelectorAll('[data-cat]')) b.addEventListener('click', () => {
+      Sound.unlock();
+      const go = () => { if (state.screen === 'home' && categoryReady(b.dataset.cat)) startFlight('cat', null, null, b.dataset.cat); };
+      if (catLoaded()) { go(); return; }
+      b.setAttribute('aria-busy', 'true');
+      announce('Loading the questions.');
+      loadCatPrompts().then(() => { b.removeAttribute('aria-busy'); go(); });
+    });
     $('btn-flags').addEventListener('click', () => openFlags(true));
     if ($('btn-flags-new')) $('btn-flags-new').addEventListener('click', () => openFlags(false));
     wirePaste();
@@ -4916,6 +4953,8 @@
     // a plain link to the site that opened the app carries nothing to show
     if (/^https?:\/\//i.test(String(link).trim()) && !planPayload(link)) return true;
     const P = readPlan(link);
+    // a plan from a category flight names prompts that may not have loaded yet
+    if (!P && !catLoaded()) { loadCatPrompts().then(() => showPlan(readPlan(link))); return true; }
     showPlan(P);
     return !!P;
   }
@@ -6128,7 +6167,10 @@
     if (/[?&]debug\b/.test(location.search)) window.__ff = { categoryPool, drawCategory, flags, openFlags, backdrop, icon, iconCanvas, ROUTE, scene, ART, drawShowcase, ROCKETS, store, lookup, promptNudge, PROMPTS, BY_ID, DRAWABLE, PACK_LIST, DAY_CARDS, flightFor, BAY, bayOn, drawPrompts, freePool, LEG, AT, placeOf, drawRocket, key, TIERS, TIER_MAP, partyNow: () => party, state, plan: { PLAN_URL, toB64url, fromB64url, planPayload, readPlan, checkPlan, planLink, planOf, planMessage, planToday, myBurns, ghostThrust, ghost }, growth: { resultText, nextFlightText, pastDays, longestRun, streak, dayNumber, todayKey, SITE_URL, PLAY_URL, SHARE_URL, APP_URL, onWeb, freePool, flownBefore, bare, UNLISTED } };
     scene.init($('sky'));
     renderSoundBtn();
-    if (!restore(data)) resumeLive();
+    const live = readLive(), needsCats = !!(live && live.run && Array.isArray(live.run.ids) && live.run.ids.some(id => !BY_ID.has(id)));
+    if (restore(data)) { /* the hot reload's own state */ } else if (needsCats) loadCatPrompts().then(resumeLive);
+    else resumeLive();
+    if (!onWeb()) setTimeout(loadCatPrompts, 600);
     if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(snapshot); } catch (e) { /* optional */ } }
     requestAnimationFrame(frame);
     started = true;
