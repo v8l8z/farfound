@@ -3736,9 +3736,10 @@
   // Hint names one common answer (never the prompt's own example), once per prompt. A common answer flies the shortest
   // way, so using it is its own price
   function hintFor(p) {
-    const ex = p.examples || [];
+    // never the prompt's own example, nor an answer its wording already names (goalkeeper in "goalkeeper counts")
+    const ex = p.examples || [], said = key(p.text);
     for (const tier of [0, 1, 2]) {
-      const pool = p.entries.filter(e => !e.judged && TIER_MAP[e.tier] === tier && !ex.includes(key(e.name)));
+      const pool = p.entries.filter(e => !e.judged && TIER_MAP[e.tier] === tier && !ex.includes(key(e.name)) && !e.keys.some(k => k.length > 2 && said.includes(k)));
       if (pool.length) return pool[Math.floor(Math.random() * Math.min(pool.length, 6))].name;
     }
     return '';
