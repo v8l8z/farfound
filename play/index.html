@@ -271,6 +271,22 @@
   .answer-row .hint-btn { flex: 0 0 auto; width: 52px; height: auto; align-self: stretch; }
   .hint-btn svg { width: 22px; height: 22px; }
   .hint-btn.is-used { opacity: 0.45; }
+  /* online match: the other player's strip, the notice over the scope, the code and the result */
+  .live-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .live-name { display: block; width: 100%; margin-top: 12px; }
+  .live-pips { display: grid; grid-template-columns: repeat(4, auto); gap: 3px; }
+  .live-toast { position: absolute; z-index: 7; left: 50%; top: 13%; transform: translateX(-50%); width: max-content; max-width: 88%; padding: 6px 12px; border-radius: 8px; text-align: center; background: rgba(7,10,28,0.92); border: 1.5px solid var(--cls, var(--rule)); animation: tag-in 0.3s ease-out both; pointer-events: none; }
+  .scope:has(.live-toast) .caption { top: 36%; } /* the notice has the top; a flight caption steps down */
+  .live-toast b { display: block; font-size: 14px; color: var(--ink); }
+  .live-toast span { font-size: 13px; color: var(--ink-dim); }
+  .live-code { margin: 10px 0 6px; font-family: var(--f-data); font-weight: 700; font-size: clamp(34px, 11vw, 48px); letter-spacing: 0.18em; text-align: center; color: var(--flare-hi); }
+  .live-rounds { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .live-rounds .pt-q { margin: 0 0 4px; font-weight: 700; color: var(--ink); }
+  .live-said { display: flex; align-items: baseline; gap: 6px; font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+  .live-said .pip { flex: 0 0 auto; align-self: center; }
+  .live-said b { color: var(--ink-dim); font-weight: 400; }
+  .live-said i { font-style: normal; color: var(--ink-dim); font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .live-toast { animation: none; } }
   .hint-btn { position: relative; }
   .hint-count { position: absolute; top: 3px; right: 6px; font-family: var(--f-data); font-size: 11px; line-height: 1; color: var(--ink-dim); }
   /* Flags: the flag big enough to read on a phone, on a thin frame so white flags still show their edge */

@@ -3111,7 +3111,7 @@
   }
   // a flight plan of today's flight, flown before today's was started, is today's flight (see planToday)
   const isDaily = run => run.mode === 'daily' || (run.mode === 'duel' && !!run.daily);
-  function pointsRate(run) { return run.practice ? 0 : isDaily(run) ? 2 : 1; }
+  function pointsRate(run) { return run.practice || run.mode === 'live' ? 0 : isDaily(run) ? 2 : 1; } // an online match earns none
   // points are the thrust gained (even past Andromeda), banked as each burn lands, so ending early or closing the page keeps them
   function bankPoints(run, gain) {
     const pts = gain * pointsRate(run);
@@ -3298,6 +3298,7 @@
         </ol>
         <h2 class="section-title rules-head">Play together</h2>
         <ul class="rules rules-party">
+          <li><b>Online match.</b> Create a match and send the code or link to a friend on another phone. You both get the same prompts at the same time, a notice shows each burn the other lands, and at the end you see who flew further. It needs an internet connection and earns no points.</li>
           <li><b>Space Race.</b> Pass the phone round 2 to 6 players. Everyone answers the same prompt in secret, then the answers are revealed together. When players give the same answer it jams, and its thrust is split between them, rounded down. The most thrust after the last round wins.</li>
           <li><b>Orbit.</b> One prompt goes round the room, and every answer must be new. A repeat, a skip, no answer or an answer the room turns down drops you out of orbit. The last player in orbit wins.</li>
           <li>In both, an answer that isn't in the logbook goes to a room vote, and counts as ${TIERS[ROOM_TIER].name} if the room says yes. Games together never earn points and never count toward today's flight.</li>
@@ -3350,6 +3351,7 @@
   function pauseClock() {
     if (state.screen === 'party') { partyPause(); return; }
     if (state.screen !== 'flight') return;
+    if (state.run && state.run.mode === 'live') return; // the other player's clock is running too
     if (state.phase === 'scan') { state.paused = { left: Math.max(0, state.deadline - performance.now()) }; state.phase = 'paused'; }
     else if (state.phase === 'read') { state.paused = { left: BURN_MS, read: true }; state.phase = 'paused'; }
   }
@@ -3373,7 +3375,7 @@
   const usedTenths = () => clamp(Math.round((BURN_MS - timeLeft()) / 100), 0, BURN_MS / 100);
   // only the flight in progress is written here, so an idle second tab can't undo another tab's points
   function persistLive() {
-    if (state.screen === 'flight' && state.run && !state.run.recorded) {
+    if (state.screen === 'flight' && state.run && !state.run.recorded && state.run.mode !== 'live') {
       try { localStorage.setItem(LIVE_KEY, JSON.stringify(snapshot())); } catch (e) { /* storage blocked */ }
     } else clearLive();
   }
@@ -3551,6 +3553,7 @@
       <section class="together" aria-labelledby="together-title">
         <h2 class="section-title" id="together-title">Play together</h2>
         <div class="modes">
+          <button type="button" class="mode" id="btn-live"><span class="mode-name">Online match</span><span class="mode-desc">Play a friend on another phone. The same ${BURNS} questions at the same time, and you watch each other fly.</span></button>
           <button type="button" class="mode" id="btn-race"><span class="mode-name">Space Race</span><span class="mode-desc">Pass the phone, 2 to 6 players. Same prompt for everyone, answers revealed together.</span></button>
           <button type="button" class="mode" id="btn-orbit"><span class="mode-name">Orbit</span><span class="mode-desc">One prompt goes round the room. Every answer must be new.</span></button>
         </div>
@@ -3570,6 +3573,7 @@
     $('past-head').addEventListener('click', () => openPast(!pastOpen()));
     for (const b of consoleEl.querySelectorAll('.past-fly')) b.addEventListener('click', () => flyPast(b.dataset.day));
     $('btn-hangar').addEventListener('click', e => openHangar(e.currentTarget));
+    $('btn-live').addEventListener('click', () => openLive());
     $('btn-race').addEventListener('click', () => openParty('race'));
     $('btn-orbit').addEventListener('click', () => openParty('orbit'));
     for (const b of consoleEl.querySelectorAll('[data-cat]')) b.addEventListener('click', () => {
@@ -3603,6 +3607,7 @@
 
   function showHome(fromUser = false) {
     if (state.screen === 'flags' && flags.phase === 'scan') saveFlagsRun();
+    liveClose();
     cancelCheck();
     app.inert = false;
     state.screen = 'home';
@@ -3643,6 +3648,7 @@
       if (mode === 'duel') run.plan = plan; else run.past = day;
       run.prompts = mode === 'duel' ? plan.ids.map(id => BY_ID.get(id)) : flightFor(day);
     } else if (mode === 'cat') { run.cat = cat; run.prompts = drawCategory(cat); }
+    else if (mode === 'live') run.prompts = live.s.ids.map(id => BY_ID.get(id));
     else run.prompts = mode === 'daily' ? flightFor(today) : pickPrompts(Math.random, true);
     // whatever the flight, its prompts are now the most recently seen, so no other mode deals them again soon
     markSeen(run.prompts);
@@ -3692,6 +3698,7 @@
         ${topped ? '<p class="note" id="prompt-topped">Topped up with other cards.</p>' : ''}
       </div>
       ${run.plan ? ghostRowHtml(run) : ''}
+      ${run.mode === 'live' ? liveRowHtml() : ''}
       <form class="answer-row" id="answer-form" autocomplete="off">
         <label class="sr-only" for="answer">Your answer</label>
         <input id="answer" name="answer" maxlength="60" placeholder="Type an answer" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="send" dir="auto" aria-describedby="prompt-text feedback">
@@ -3838,6 +3845,7 @@
     const bank = bankPoints(run, gain);
     const res = { pid: current().id, answer, name: shown, logName: entry.name, tier, lt: entry.tier, tenths: usedTenths(), from, to, fromT, toT, gain, miles0, miles1, via, offCharts, depth: depthOf(current(), entry, tier, offCharts), pts: bank.pts, fresh: bank.fresh };
     run.results.push(res);
+    if (run.mode === 'live') liveResult(res);
     const color = TIERS[tier].color;
     state.hudFresh = { n: gain, color };
     // the burn itself, once the gauge has locked; quiet when the flight is ending anyway
@@ -3958,6 +3966,7 @@
     const miles = scene.view === 'cruise' ? milesAt(pl.stop, pl.frac) : ROUTE[run.stop].miles;
     const res = { pid: current().id, answer: '', name: '', tier: -1, lt: -1, tenths: usedTenths(), from: run.stop, to: run.stop, fromT: run.thrust, toT: run.thrust, gain: 0, miles0: miles, miles1: miles, via: '', offCharts: false, why, depth: 0 };
     run.results.push(res);
+    if (run.mode === 'live') liveResult(res);
     scene.sputter();
     Sound.misfire();
     Buzz.go([60]);
@@ -4040,8 +4049,10 @@
     else where = destRow(res.to, `<b>Holding at ${esc(dest.name)}</b>${pl.cells ? `<br>${pl.cells} of ${pl.need} cells filled toward ${esc(next.name)}.` : ''}`);
     // racing a flight plan, the ghost's answer turns face up beside yours
     const duel = run.plan ? duelFace(run, res) : null;
+    const isLive = run.mode === 'live';
     consoleEl.innerHTML = `
       ${duel ? duel.html : ''}
+      ${isLive ? liveRowHtml() : ''}
       <div class="card find-card" style="--cls:${t ? t.color : 'var(--miss)'}">
         <p class="eyebrow"><span>${head}</span>${chip}</p>
         <h2 class="find-name">${name}</h2>
@@ -4052,12 +4063,13 @@
         ${where}
         ${notes}
       </div>
-      <button type="button" class="btn btn-wide" id="btn-next">${over ? 'Open the flight log' : 'Next burn'}</button>`;
+      <button type="button" class="btn btn-wide" id="btn-next">${isLive && over ? 'See the result' : over ? 'Open the flight log' : 'Next burn'}</button>`;
     const nextBtn = $('btn-next');
     const revealAt = performance.now();
     nextBtn.addEventListener('click', e => {
       if (e.detail === 0 && performance.now() - revealAt < 700) return; // a held or early Enter
       Sound.unlock();
+      if (isLive) { liveNext(over); return; }
       if (over) finishPlay(); else showScan();
     });
     try { nextBtn.focus({ preventScroll: true }); } catch (e) { nextBtn.focus(); }
@@ -4066,6 +4078,7 @@
     announce((t ? `${t.name} adds ${gain} thrust. ${ahead}${res.pts ? ` You earn ${res.pts} point${res.pts === 1 ? '' : 's'}.` : ''}` : 'Misfire, and no thrust is added.') + (duel ? ' ' + duel.say : ''));
     if (duel && duel.jam) { Sound.lock(0); Buzz.go([20]); }
     persistLive();
+    if (isLive) setTimeout(liveSync, 0); // the match may have moved on during the lock-in
   }
 
   // ---------- ad breaks ----------
@@ -4951,6 +4964,9 @@
     if (!started) { planQueue.push(link); return true; }
     // a shared result's link (…/play/#today) opens the app on today's flight, not as a plan
     if (/(?:#|%23)today$/i.test(String(link).trim())) { openToday(); return true; }
+    // a friend's online match: …/play/#live=CODE opens the join screen with the code filled in
+    const lm = /(?:#|%23)live=([A-Za-z0-9]{5})$/i.exec(String(link).trim());
+    if (lm) { openLive(lm[1].toUpperCase()); return true; }
     // a plain link to the site that opened the app carries nothing to show
     if (/^https?:\/\//i.test(String(link).trim()) && !planPayload(link)) return true;
     const P = readPlan(link);
@@ -4965,10 +4981,11 @@
   // A shared result's #today opens How to play with Start today's flight, when it is still to be flown from home
   function openHash() {
     const h = typeof location.hash === 'string' ? location.hash.slice(1) : '';
-    const today = h === 'today';
-    if (!today && !planPayload(h)) return;
+    const today = h === 'today', match = /^live=[A-Za-z0-9]{5}$/i.test(h);
+    if (!today && !match && !planPayload(h)) return;
     try { window.history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
-    if (!today) openPlanLink(h);
+    if (match) openPlanLink('#' + h);
+    else if (!today) openPlanLink(h);
     else openToday();
   }
   function openToday() {
@@ -5993,6 +6010,317 @@
     if (left <= 0) endFlags('time');
   }
 
+  // ---------- online match: two phones, the same 8 prompts, each one at the same moment ----------
+  // One player creates a match and gets a 5-letter code and a link; a friend joins with either. The match server
+  // (farfound-live, a Cloudflare Worker) only relays: each phone checks its own answers, sends each burn's tier,
+  // thrust and words, and gets back the whole match state after every change. The other player's tier and place show
+  // at once, as a notice over the scope and in the strip under the prompt; their words only once you have answered.
+  // A match earns no points and leaves today's flight, the streak and the record alone. ?live=local uses a local server.
+  const LIVE_HTTP = /[?&]live=local\b/.test(location.search) ? 'http://localhost:8787' : 'https://live.farfoundtrivia.com';
+  const live = { ws: null, code: '', token: '', s: null, game: 0, seen: 0, left: true, tries: 0, startTimer: 0, toastTimer: 0, ping: 0, waiting: false, final: false };
+  const liveOn = () => !!live.code && !live.left;
+  const liveOpp = () => (live.s && live.s.players[1 - live.s.you]) || null;
+  const liveOppName = () => { const o = liveOpp(); return (o && cleanCall(o.name)) || 'Your friend'; };
+  const liveThrust = p => p.results.reduce((a, r) => a + (r ? r.gain : 0), 0);
+  const liveRocket = p => ROCKET_BY_ID.get(p.rocket) || ROCKETS[0];
+  const liveSend = m => { try { if (live.ws && live.ws.readyState === 1) live.ws.send(JSON.stringify(m)); } catch (e) { /* the reconnect will catch up */ } };
+  const liveErr = { server: 'Couldn\'t reach the match server. Check your connection and try again.', lost: 'The connection to the match was lost.' };
+
+  function openLive(code = '') {
+    if (state.screen !== 'home' || !helpEl.hidden || !hangarEl.hidden || planView.open) return;
+    Sound.unlock();
+    state.screen = 'live';
+    app.classList.remove('is-home');
+    pipsEl.innerHTML = '';
+    readout.textContent = '';
+    window.scrollTo(0, 0);
+    renderLiveEntry(code);
+  }
+  function renderLiveEntry(code = '', err = '') {
+    consoleEl.innerHTML = `
+      <div class="card">
+        <p class="eyebrow"><span>Online match</span></p>
+        <h2 class="prompt" id="live-title" tabindex="-1">Play a friend on another phone</h2>
+        <p class="note">You both get the same ${BURNS} questions at the same time, and see how far the other has flown.</p>
+        <label class="sr-only" for="live-name">Your name</label>
+        <input class="pt-in live-name" id="live-name" maxlength="${CALL_MAX}" value="${esc(store.callsign || '')}" placeholder="Your name or nickname" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done" dir="auto">
+      </div>
+      <button type="button" class="btn btn-wide" id="live-create">Create a match</button>
+      <div class="card">
+        <h3 class="section-title">Join a match</h3>
+        <form class="answer-row" id="live-join" autocomplete="off">
+          <label class="sr-only" for="live-code">Match code</label>
+          <input id="live-code" maxlength="5" value="${esc(code)}" placeholder="5-letter code" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go">
+          <button class="btn" type="submit" id="live-go">Join</button>
+        </form>
+      </div>
+      <p class="feedback${err ? ' is-error' : ''}" id="live-fb">${esc(err)}</p>
+      <button type="button" class="btn-line btn-wide" id="live-home">Home</button>`;
+    const keepName = () => { store.callsign = cleanCall($('live-name').value); save(); };
+    $('live-create').addEventListener('click', () => { keepName(); liveCreate(); });
+    $('live-join').addEventListener('submit', e => { e.preventDefault(); keepName(); liveJoin($('live-code').value); });
+    $('live-home').addEventListener('click', () => leaveLive());
+    if (err) announce(err);
+    $('live-title').focus({ preventScroll: true });
+  }
+  function liveBusy(msg) {
+    for (const id of ['live-create', 'live-go']) if ($(id)) $(id).disabled = true;
+    const fb = $('live-fb');
+    if (fb) { fb.className = 'feedback is-busy'; fb.textContent = msg; }
+    announce(msg);
+  }
+  async function liveCreate() {
+    liveBusy('Creating the match.');
+    try {
+      const ids = drawPrompts(BURNS, { useSeen: false }).map(p => p.id);
+      const r = await fetch(`${LIVE_HTTP}/room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
+      const j = await r.json();
+      if (!j.code) throw new Error('no code');
+      if (state.screen === 'live') liveConnect(j.code);
+    } catch (e) { if (state.screen === 'live') renderLiveEntry('', liveErr.server); }
+  }
+  async function liveJoin(raw) {
+    const code = String(raw).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length !== 5) { renderLiveEntry(code, 'A match code has 5 letters or numbers.'); return; }
+    liveBusy('Joining the match.');
+    try {
+      const r = await fetch(`${LIVE_HTTP}/room/${code}`), j = await r.json();
+      if (state.screen !== 'live') return;
+      if (!j.open) { renderLiveEntry(code, r.status === 404 ? 'No match has that code. Check it with your friend.' : 'That match already has two players.'); return; }
+      liveConnect(code);
+    } catch (e) { if (state.screen === 'live') renderLiveEntry(code, liveErr.server); }
+  }
+  function liveConnect(code, again = false) {
+    if (!again) Object.assign(live, { code, token: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36), s: null, game: 0, seen: 0, left: false, tries: 0, waiting: false, final: false });
+    const q = `token=${live.token}&name=${encodeURIComponent(callName())}&rocket=${encodeURIComponent(rocketNow().id)}`;
+    let ws;
+    try { ws = new WebSocket(`${LIVE_HTTP.replace(/^http/, 'ws')}/room/${code}/ws?${q}`); } catch (e) { liveLost(); return; }
+    live.ws = ws;
+    ws.onmessage = e => {
+      if (live.ws !== ws) return;
+      let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+      if (m && m.t === 'state') { live.tries = 0; onLiveState(m); }
+    };
+    ws.onclose = () => {
+      if (live.ws !== ws || live.left) return;
+      live.ws = null;
+      // a match that never answered is gone; one under way gets a good while to come back
+      if (++live.tries > (live.s ? 20 : 2)) { liveLost(); return; }
+      setTimeout(() => { if (!live.left && !live.ws) liveConnect(live.code, true); }, Math.min(4000, 500 * live.tries));
+    };
+    clearInterval(live.ping);
+    live.ping = setInterval(() => liveSend({ t: 'ping' }), 25000);
+  }
+  // back from another app: the connection has usually dropped, so pick it up at once
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && liveOn() && !live.ws) liveConnect(live.code, true); });
+  function liveClose() {
+    const ws = live.ws;
+    Object.assign(live, { ws: null, code: '', s: null, left: true, waiting: false, final: false });
+    clearTimeout(live.startTimer);
+    clearInterval(live.ping);
+    liveToast('');
+    try { if (ws) ws.close(); } catch (e) { /* already closed */ }
+  }
+  function leaveLive() { liveClose(); showHome(true); }
+  function liveLost() {
+    const had = !!live.s;
+    liveClose();
+    state.run = null;
+    state.phase = 'idle';
+    signal.classList.add('is-off');
+    if (scene.cine) { scene.cine = null; $('caption-slot').innerHTML = ''; }
+    scene.calm();
+    scene.setStop(0);
+    setHud();
+    state.screen = 'live';
+    renderLiveEntry('', had ? liveErr.lost : liveErr.server);
+  }
+
+  function onLiveState(s) {
+    const prev = live.s;
+    live.s = s;
+    if (s.phase === 'lobby') { if (state.screen === 'live' && !$('live-share')) renderLiveLobby(); return; }
+    if (!s.ids.every(id => BY_ID.has(id))) { liveClose(); state.screen = 'live'; renderLiveEntry('', 'This match uses questions your version doesn\'t have. Update Farfound and try again.'); return; }
+    if (s.game !== live.game) {
+      // a new game (the first, or a rematch): a short countdown, then the first prompt for both at once
+      live.game = s.game;
+      live.seen = 0;
+      live.final = false;
+      live.waiting = false;
+      if (s.phase === 'done') { showLiveFinal(); return; }
+      clearTimeout(live.startTimer);
+      const wait = s.round === 0 ? Math.max(0, s.startAt - s.now - READ_MS) : 0;
+      if (wait > 300) renderLiveCountdown();
+      live.startTimer = setTimeout(() => { if (liveOn() && live.game === s.game) { startFlight('live'); liveSync(); } }, wait);
+      return;
+    }
+    liveNotice(prev);
+    if (live.final) { liveFinalButtons(); return; }
+    liveSync();
+  }
+  // keeps this phone's flight in step with the match
+  function liveSync() {
+    const s = live.s, run = state.run;
+    if (!s || !run || run.mode !== 'live' || state.screen !== 'flight') return;
+    const mine = s.players[s.you].results;
+    // the server called time on a burn this phone never finished (the app was away): a misfire here too
+    if ((state.phase === 'scan' || state.phase === 'read') && mine[run.results.length]) { miss('timeout'); return; }
+    while (state.phase === 'reveal' && run.results.length < s.round && run.results.length < BURNS) { state.phase = 'scan'; miss('timeout'); }
+    if (s.phase === 'play' && s.round === run.results.length && state.phase === 'reveal') { live.waiting = false; showScan(); liveRow(); return; }
+    liveRow();
+    liveWait();
+  }
+  // sent as each burn lands (accept and miss call this)
+  function liveResult(res) {
+    liveSend({ t: 'result', game: live.game, round: state.run.results.length - 1, tier: res.tier, gain: res.gain, text: res.tier < 0 ? '' : res.name, tenths: res.tenths });
+  }
+  // Next burn in a match: both players have to be ready, so the button waits for the other one
+  function liveNext(over) {
+    liveSend({ t: 'ready', game: live.game, round: state.run.results.length - 1 });
+    if (over) { showLiveFinal(); return; }
+    live.waiting = true;
+    liveWait();
+    liveSync();
+  }
+  function liveWait() {
+    const b = $('btn-next'), o = liveOpp();
+    if (!b || !live.waiting || state.phase !== 'reveal' || !o) return;
+    b.disabled = true;
+    b.textContent = o.online ? `Waiting for ${liveOppName()}` : 'Next burn coming up';
+  }
+  // the other player under the prompt: their rocket, where they are, this burn, and a pip for every burn so far
+  function liveRowInner() {
+    const o = liveOpp(), run = state.run;
+    if (!o || !run) return '';
+    const T = liveThrust(o), pl = placeOf(T), shown = state.phase === 'reveal' || state.phase === 'lock';
+    const r = o.results[shown ? run.results.length - 1 : run.results.length];
+    const where = T ? `${ROUTE[pl.stop].name}, ${T} thrust` : 'On the launch pad';
+    const now = !o.online ? 'Has left the match' : !r ? 'Still thinking' : r.tier < 0 ? 'Misfired on this one' : r.text ? `Said ${r.text} (${TIERS[r.tier].name})` : `Locked in: ${TIERS[r.tier].name}`;
+    const pips = Array.from({ length: BURNS }, (_, i) => { const x = o.results[i]; return !x ? '<span class="pip"></span>' : x.tier < 0 ? '<span class="pip is-miss"></span>' : `<span class="pip" style="background:${TIERS[x.tier].color}"></span>`; }).join('');
+    return `<img src="${rocketThumb(liveRocket(o), false)}" alt=""><span class="ghost-who"><b>${esc(liveOppName())}</b><span>${esc(where)}</span><span>${esc(now)}</span></span><span class="live-pips" aria-hidden="true">${pips}</span>`;
+  }
+  const liveRowHtml = () => (liveOpp() ? `<div class="ghost-row live-row" id="live-row">${liveRowInner()}</div>` : '');
+  function liveRow() { const el = $('live-row'); if (el) el.innerHTML = liveRowInner(); }
+  // a notice over the scope each time the other player's burn lands: its tier and where it took them
+  function liveToast(title, sub = '', color = '') {
+    let el = $('live-toast');
+    clearTimeout(live.toastTimer);
+    if (!title) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'live-toast'; el.className = 'live-toast'; $('scope').appendChild(el); }
+    el.style.setProperty('--cls', color || 'var(--rule)');
+    el.innerHTML = `<b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}`;
+    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    live.toastTimer = setTimeout(() => { const x = $('live-toast'); if (x) x.remove(); }, 4200);
+  }
+  function liveNotice(prev) {
+    const o = liveOpp(), was = prev && prev.players[1 - prev.you];
+    if (!o) return;
+    const n = o.results.filter(Boolean).length, name = liveOppName();
+    if (was && n > live.seen && (state.screen === 'flight' || live.final)) {
+      const r = o.results[n - 1], T = liveThrust(o), st = placeOf(T).stop, moved = r.gain > 0 && st > placeOf(T - r.gain).stop;
+      const title = r.tier < 0 ? `${name} misfired` : `${name}: ${TIERS[r.tier].name}, +${r.gain} thrust`;
+      const sub = !T ? 'Still on the launch pad' : moved ? `Reached ${stopName(st)}` : `${r.tier < 0 ? 'Still' : 'Now'} at ${stopName(st)}`;
+      liveToast(title, sub, r.tier < 0 ? '' : TIERS[r.tier].color);
+      announce(`${title}. ${sub}.`);
+      if (r.tier >= 0) Sound.tone(1568, 0.06, { type: 'triangle', vol: 0.025 });
+    } else if (was && was.online !== o.online && state.screen === 'flight') {
+      liveToast(o.online ? `${name} is back` : `${name} has left the match`);
+      announce(o.online ? `${name} is back.` : `${name} has left the match.`);
+    }
+    live.seen = n;
+  }
+
+  function renderLiveLobby() {
+    const code = live.s.code, link = `${PLAY_URL}#live=${code}`;
+    consoleEl.innerHTML = `
+      <div class="card">
+        <p class="eyebrow"><span>Online match</span><span>Waiting</span></p>
+        <h2 class="prompt" id="live-title" tabindex="-1">Send this code to a friend</h2>
+        <p class="live-code" aria-label="Match code ${code.split('').join(' ')}">${code}</p>
+        <p class="note">They open Farfound, choose Online match and type the code, or tap your link. The match starts as soon as they join.</p>
+      </div>
+      <button type="button" class="btn btn-wide" id="live-share">Share the link</button>
+      <p class="feedback" id="live-fb"></p>
+      <button type="button" class="btn-line btn-wide" id="live-home">Cancel</button>`;
+    $('live-share').addEventListener('click', () => shareText(`Play me at Farfound. Match code ${code}: ${link}`, how => {
+      const fb = $('live-fb'), m = how === 'copied' ? 'Link copied. Paste it to your friend.' : how === 'shared' ? 'Sent. Waiting for your friend to join.' : '';
+      if (fb && m) { fb.textContent = m; announce(m); }
+    }));
+    $('live-home').addEventListener('click', () => leaveLive());
+    announce(`Match code ${code.split('').join(' ')}. Waiting for a friend to join.`);
+    $('live-title').focus({ preventScroll: true });
+  }
+  function renderLiveCountdown() {
+    state.screen = 'live';
+    logEl.hidden = true;
+    consoleEl.innerHTML = `
+      <div class="card">
+        <p class="eyebrow"><span>Online match</span><span>Starting</span></p>
+        <h2 class="prompt" id="live-title" tabindex="-1">${esc(liveOppName())} is in. Get ready.</h2>
+        <p class="note">${BURNS} questions, ${BURN_MS / 1000} seconds each. You both answer at the same time.</p>
+      </div>`;
+    announce(`${liveOppName()} is in. The first question is coming up.`);
+    $('live-title').focus({ preventScroll: true });
+  }
+
+  // ---- the result: who flew further, and every burn side by side ----
+  function showLiveFinal() {
+    if (!live.s) return;
+    live.final = true;
+    live.waiting = false;
+    state.screen = 'live';
+    state.phase = 'idle';
+    state.run = null;
+    signal.classList.add('is-off');
+    pipsEl.innerHTML = '';
+    readout.textContent = '';
+    window.scrollTo(0, 0);
+    const s = live.s, me = s.players[s.you], opp = s.players[1 - s.you], a = liveThrust(me), b = liveThrust(opp), name = liveOppName();
+    const pa = placeOf(a), pb = placeOf(b);
+    const head = a > b ? 'You win' : b > a ? `${name} wins` : 'A draw';
+    const reach = (T, pl) => (T ? `${stopName(pl.stop)}, ${milesText(milesAt(pl.stop, pl.frac))} from Earth` : 'the launch pad');
+    const gap = Math.abs(pa.stop - pb.stop), lead = a > b ? 'You' : name;
+    const line = a === b ? `You both flew to ${reach(a, pa)} on ${a} thrust.`
+      : gap ? `${lead} flew ${gap} stop${gap === 1 ? '' : 's'} further, on ${Math.max(a, b)} thrust to ${Math.min(a, b)}.`
+        : `You both reached ${stopName(pa.stop)}, but ${a > b ? 'you' : name} got closer to the next stop: ${Math.max(a, b)} thrust to ${Math.min(a, b)}.`;
+    const row = (p, who, T, pl, lead) => `<li${lead ? ' class="is-lead"' : ''}><img src="${rocketThumb(liveRocket(p), false)}" alt=""><span class="pt-who"><b>${esc(who)}</b><span>Stop ${pl.stop}: ${esc(T ? reach(T, pl) : 'the launch pad')}</span></span><span class="pt-num">${T}<small>thrust</small></span></li>`;
+    const said = (who, r) => `<span class="live-said"><span class="pip${!r || r.tier < 0 ? ' is-miss' : ''}"${r && r.tier >= 0 ? ` style="background:${TIERS[r.tier].color}"` : ''}></span><b>${esc(who)}</b> ${r && r.tier >= 0 ? `${esc(r.text || '?')} <i>${TIERS[r.tier].name}, +${r.gain}</i>` : '<i>Misfire</i>'}</span>`;
+    consoleEl.innerHTML = `
+      <div class="card">
+        <p class="eyebrow"><span>Online match</span><span>Result</span></p>
+        <h2 class="prompt" id="live-title" tabindex="-1">${esc(head)}</h2>
+        <p class="note">${esc(line)}</p>
+        <ol class="pt-list live-final">${a >= b ? row(me, 'You', a, pa, a > b) + row(opp, name, b, pb, false) : row(opp, name, b, pb, true) + row(me, 'You', a, pa, false)}</ol>
+      </div>
+      <button type="button" class="btn btn-wide" id="live-again">Rematch</button>
+      <p class="feedback" id="live-fb"></p>
+      <div class="card">
+        <h3 class="section-title">Burn by burn</h3>
+        <ol class="live-rounds">${s.ids.map((id, i) => `<li><p class="pt-q">${esc(BY_ID.get(id).text)}</p>${said('You', me.results[i])}${said(name, opp.results[i])}</li>`).join('')}</ol>
+      </div>
+      <button type="button" class="btn-line btn-wide" id="live-home">Home</button>`;
+    $('live-again').addEventListener('click', () => {
+      liveSend({ t: 'rematch', ids: drawPrompts(BURNS, { useSeen: false }).map(p => p.id) });
+      $('live-again').disabled = true;
+    });
+    $('live-home').addEventListener('click', () => leaveLive());
+    liveFinalButtons();
+    const pl = placeOf(a);
+    scene.setStop(pl.stop, pl.frac, pl.frac > 0 && pl.stop > 0 && pl.stop < LAST ? 'cruise' : 'stop');
+    setHud();
+    announce(`${head}. ${line}`);
+    if (a > b) Sound.land(3);
+    $('live-title').focus({ preventScroll: true });
+  }
+  // a rematch needs the other player still here, and the match finished on the server
+  function liveFinalButtons() {
+    const b = $('live-again'), fb = $('live-fb'), o = liveOpp(), s = live.s;
+    if (!b || !o || !s) return;
+    const can = o.online && s.phase === 'done';
+    b.disabled = !can;
+    if (fb) fb.textContent = !o.online ? `${liveOppName()} has left.` : s.phase !== 'done' ? `${liveOppName()} is still looking at the last burn.` : '';
+  }
+
   // ---------- main loop ----------
   function frame(t) {
     tickNextClock(t);
@@ -6034,6 +6362,7 @@
   $('btn-end').addEventListener('click', () => {
     if (state.screen === 'party') { leaveParty(); return; }
     if (state.screen === 'flags') { showHome(true); return; }
+    if (state.screen === 'live') { leaveLive(); return; }
     if (state.screen !== 'flight' || !state.run) return;
     const btn = $('btn-end');
     if (performance.now() > endArmedUntil) {
@@ -6047,6 +6376,7 @@
     endArmedUntil = 0;
     btn.classList.remove('is-armed');
     btn.setAttribute('aria-label', 'End this flight and open the log');
+    if (state.run.mode === 'live') { leaveLive(); return; }
     if (!state.run.results.length) { showHome(true); return; }
     if (state.run.results.length >= BURNS) finishPlay(); else finish();
   });
@@ -6165,10 +6495,10 @@
   }
 
   function start(data) {
-    if (/[?&]debug\b/.test(location.search)) window.__ff = { categoryPool, drawCategory, flags, openFlags, backdrop, icon, iconCanvas, ROUTE, scene, ART, drawShowcase, ROCKETS, store, lookup, promptNudge, PROMPTS, BY_ID, DRAWABLE, PACK_LIST, DAY_CARDS, flightFor, BAY, bayOn, drawPrompts, freePool, LEG, AT, placeOf, drawRocket, key, TIERS, TIER_MAP, partyNow: () => party, state, plan: { PLAN_URL, toB64url, fromB64url, planPayload, readPlan, checkPlan, planLink, planOf, planMessage, planToday, myBurns, ghostThrust, ghost }, growth: { resultText, nextFlightText, pastDays, longestRun, streak, dayNumber, todayKey, SITE_URL, PLAY_URL, SHARE_URL, APP_URL, onWeb, freePool, flownBefore, bare, UNLISTED } };
+    if (/[?&]debug\b/.test(location.search)) window.__ff = { liveNow: () => live, categoryPool, drawCategory, flags, openFlags, backdrop, icon, iconCanvas, ROUTE, scene, ART, drawShowcase, ROCKETS, store, lookup, promptNudge, PROMPTS, BY_ID, DRAWABLE, PACK_LIST, DAY_CARDS, flightFor, BAY, bayOn, drawPrompts, freePool, LEG, AT, placeOf, drawRocket, key, TIERS, TIER_MAP, partyNow: () => party, state, plan: { PLAN_URL, toB64url, fromB64url, planPayload, readPlan, checkPlan, planLink, planOf, planMessage, planToday, myBurns, ghostThrust, ghost }, growth: { resultText, nextFlightText, pastDays, longestRun, streak, dayNumber, todayKey, SITE_URL, PLAY_URL, SHARE_URL, APP_URL, onWeb, freePool, flownBefore, bare, UNLISTED } };
     scene.init($('sky'));
     renderSoundBtn();
-    const live = readLive(), needsCats = !!(live && live.run && Array.isArray(live.run.ids) && live.run.ids.some(id => !BY_ID.has(id)));
+    const left = readLive(), needsCats = !!(left && left.run && Array.isArray(left.run.ids) && left.run.ids.some(id => !BY_ID.has(id)));
     if (restore(data)) { /* the hot reload's own state */ } else if (needsCats) loadCatPrompts().then(resumeLive);
     else resumeLive();
     if (!onWeb()) setTimeout(loadCatPrompts, 600);
