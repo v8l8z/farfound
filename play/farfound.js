@@ -4082,14 +4082,18 @@
   }
 
   // ---------- ad breaks ----------
-  // A flight that uses all its burns ends with a break for an ad before the log opens.
+  // Every second finished game ends with a break for an ad; a flight's comes before its log opens.
   // The game shows no ads itself: an app that wraps it defines window.farfoundAdBreak(name), which returns a
   // promise that settles once its ad has closed (the iOS app shows a Google AdMob interstitial there).
   // With no host, as inside claude.ai, the log opens straight away.
   const AD_WAIT_MS = 90000; // a host that never answers can't strand the player
+  const AD_EVERY = 2; // an ad after every second finished game; the count carries over between visits
   function adBreak(name) {
     const host = window.farfoundAdBreak;
     if (typeof host !== 'function') return Promise.resolve();
+    store.adGames = (store.adGames | 0) + 1;
+    save();
+    if (store.adGames % AD_EVERY) return Promise.resolve();
     return new Promise(resolve => {
       const timer = setTimeout(resolve, AD_WAIT_MS);
       const done = () => { clearTimeout(timer); resolve(); };
@@ -4105,6 +4109,16 @@
     recordRun(run);
     try { await adBreak('flight_complete'); } finally { state.adPending = false; }
     if (state.run === run) finish();
+  }
+
+  // The same break at the end of the other games: Flags, a Space Race and an online match.
+  // `then` runs once the ad has gone, or at once where there is none.
+  async function afterAd(name, then) {
+    if (state.adPending) return;
+    state.adPending = true;
+    app.inert = true;
+    try { await adBreak(name); } finally { state.adPending = false; app.inert = false; }
+    then();
   }
 
   // ---------- flight log ----------
@@ -5496,7 +5510,9 @@
       <button type="button" class="btn btn-wide" id="btn-next">${last ? (over ? 'Final standings' : 'Standings') : 'Next answer'}</button>`;
     onPress($('btn-next'), () => {
       if (party !== P || P.phase !== 'reveal') return;
-      if (last) endRound(); else { P.step = s + 1; showReveal(); }
+      if (!last) { P.step = s + 1; showReveal(); }
+      else if (P.round + 1 >= P.rounds) afterAd('race_over', () => { if (party === P && P.res) endRound(); });
+      else endRound();
     });
     focusNext();
     announce(say);
@@ -5986,8 +6002,11 @@
       </div>
       <button type="button" class="btn btn-wide" id="flags-again">Fly again</button>
       <button type="button" class="btn-line btn-wide" id="flags-home">Home</button>`;
-    $('flags-again').addEventListener('click', () => openFlags(false));
-    $('flags-home').addEventListener('click', () => showHome(true));
+    // one ad for a finished run, whichever way the player leaves it
+    const leave = then => () => { if (flags.adShown) then(); else { flags.adShown = true; afterAd('flags_over', then); } };
+    flags.adShown = false;
+    $('flags-again').addEventListener('click', leave(() => openFlags(false)));
+    $('flags-home').addEventListener('click', leave(() => showHome(true)));
     announce(`${head} ${line} You named ${flags.named}.`);
     $('prompt-text').focus({ preventScroll: true });
   }
@@ -6176,8 +6195,10 @@
   }
   // Next burn in a match: both players have to be ready, so the button waits for the other one
   function liveNext(over) {
-    liveSend({ t: 'ready', game: live.game, round: state.run.results.length - 1 });
-    if (over) { showLiveFinal(); return; }
+    const ready = { t: 'ready', game: live.game, round: state.run.results.length - 1 };
+    // the match isn't marked finished until the ad has closed, so a rematch can't start underneath it
+    if (over) { afterAd('match_over', () => { liveSend(ready); if (liveOn() && live.game === ready.game && !live.final) showLiveFinal(); }); return; }
+    liveSend(ready);
     live.waiting = true;
     liveWait();
     liveSync();
