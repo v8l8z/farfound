@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get Farfound Trivia</title>
+<meta name="description" content="Download Farfound Trivia, the daily trivia game where the obvious answer loses.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="../icon.png">
+<script>
+// The link in our social bios. Its one job is the download: iPhones and computers go straight to the
+// App Store. Android has no app yet, so those visitors stay here and are offered the browser game.
+// When the Android app is live, send Android to its Play Store page here too.
+var STORE = 'https://apps.apple.com/app/id6827748914';
+if (!/android/i.test(navigator.userAgent)) location.replace(STORE);
+</script>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="hero">
+    <img src="../icon.png" alt="The Farfound app icon: a rocket rising past a planet">
+    <div>
+      <h1>Farfound</h1>
+      <p class="lede">The daily trivia game where the obvious answer loses.</p>
+    </div>
+  </div>
+  <p>The Android app is on its way. Until it lands, the full game plays free in your browser, with today's eight questions.</p>
+  <div class="btns">
+    <a class="btn" href="../play/">Play now in your browser</a>
+    <a class="btn btn-line" href="https://apps.apple.com/app/id6827748914">On iPhone? Get the app</a>
+  </div>
+</main>
+</body>
+</html>
