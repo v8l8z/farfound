@@ -25,3 +25,7 @@ It copies `play-offline.html` from `../farfound` as `play/index.html`, with this
 ## Link card
 
 `og.png` (1200 by 630) is the picture shown when a link to the home, play or plan page is pasted into a chat or a post. It's `og-card.html` rendered at exactly 1200 by 630, for example with Playwright. The card uses the game's fonts from `play/`, so run `sync-play.sh` first.
+
+## Ads
+
+Every page loads Google AdSense (publisher `pub-5512492798436213`, the same account as AdMob), and `ads.txt` authorises it. Only the play page shows ads: `sync-play.sh` adds a small script that defines `window.farfoundAdBreak`, which the game calls after every second finished game, and shows an AdSense interstitial through Google's Ad Placement API. If the ad code is blocked or has no ad, the game carries on at once. Auto ads stay off in AdSense so the other pages show none. The consent message for Europe and the UK is set up in AdSense under Privacy & messaging. Never describe the site as having no ads.

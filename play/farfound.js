@@ -4084,7 +4084,7 @@
   // ---------- ad breaks ----------
   // Every second finished game ends with a break for an ad; a flight's comes before its log opens.
   // The game shows no ads itself: an app that wraps it defines window.farfoundAdBreak(name), which returns a
-  // promise that settles once its ad has closed (the iOS app shows a Google AdMob interstitial there).
+  // promise that settles once its ad has closed (the apps show a Google AdMob interstitial there, the website a Google AdSense one).
   // With no host, as inside claude.ai, the log opens straight away.
   const AD_WAIT_MS = 90000; // a host that never answers can't strand the player
   const AD_EVERY = 2; // an ad after every second finished game; the count carries over between visits

@@ -9,7 +9,7 @@ mkdir -p "$dest"
 # the page's own title, description and link card, so a pasted link unfurls with og.png
 TAGS=$(cat <<'EOF'
 <title>Play Farfound: daily rare-answer trivia in your browser</title>
-<meta name="description" content="Play Farfound free in your browser. Eight prompts a day: the rarer your answer, the further your rocket flies through 31 real stops. No ads, no account, no install.">
+<meta name="description" content="Play Farfound free in your browser. Eight prompts a day: the rarer your answer, the further your rocket flies through 31 real stops. No account, nothing to install.">
 <link rel="canonical" href="https://farfoundtrivia.com/play/">
 <link rel="icon" href="../icon.png">
 <link rel="apple-touch-icon" href="../icon.png">
@@ -18,15 +18,38 @@ TAGS=$(cat <<'EOF'
 <meta property="og:site_name" content="Farfound">
 <meta property="og:url" content="https://farfoundtrivia.com/play/">
 <meta property="og:title" content="Play Farfound in your browser">
-<meta property="og:description" content="The daily trivia game where rare answers fly further. Eight prompts, 31 real stops, no ads and nothing to install.">
+<meta property="og:description" content="The daily trivia game where rare answers fly further. Eight prompts, 31 real stops and nothing to install.">
 <meta property="og:image" content="https://farfoundtrivia.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The Farfound rocket icon and wordmark above a row of the game's tier symbols.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Play Farfound in your browser">
-<meta name="twitter:description" content="The daily trivia game where rare answers fly further. Eight prompts, 31 real stops, no ads and nothing to install.">
+<meta name="twitter:description" content="The daily trivia game where rare answers fly further. Eight prompts, 31 real stops and nothing to install.">
 <meta name="twitter:image" content="https://farfoundtrivia.com/og.png">
+<script async data-ad-frequency-hint="60s" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5512492798436213" crossorigin="anonymous"></script>
+<script>
+// The game asks for an ad break after every second finished game (see adBreak in farfound.js).
+// Here the break is a Google AdSense interstitial. With no ad to show, or the ad code blocked, the game carries on at once.
+window.adsbygoogle = window.adsbygoogle || [];
+window.farfoundPrivacyPolicyURL = 'https://farfoundtrivia.com/privacy/';
+adsbygoogle.push({ preloadAdBreaks: 'on', sound: 'on' });
+window.farfoundAdBreak = function (name) {
+  return new Promise(function (resolve) {
+    if (!window.adsbygoogle || !adsbygoogle.loaded) { resolve(); return; }
+    var showing = false;
+    // Google answers at once when it has no ad; this covers the case where it never answers
+    var timer = setTimeout(function () { if (!showing) resolve(); }, 4000);
+    try {
+      adsbygoogle.push({
+        type: 'next', name: String(name || 'game_over').replace(/[^a-z0-9_]/gi, '_'),
+        beforeAd: function () { showing = true; },
+        adBreakDone: function () { clearTimeout(timer); resolve(); }
+      });
+    } catch (e) { clearTimeout(timer); resolve(); }
+  });
+};
+</script>
 EOF
 )
 export TAGS
