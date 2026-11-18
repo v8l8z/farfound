@@ -50,9 +50,9 @@ window.farfoundAdBreak = function (name) {
   });
 };
 
-// Two small banners: one at the foot of the home screen, one at the foot of a flight log. They sit in the page,
-// not fixed to the screen (AdSense does not allow a self-made sticky banner), and never show beside a question.
-// Each stays folded away until Google has filled it, so an empty slot leaves no gap.
+// A small banner at the foot of a flight log. It sits in the page and stays folded away until Google has filled it,
+// so an empty slot leaves no gap. The bar that stays at the bottom of the screen is the Google anchor ad,
+// switched on in AdSense (Ads, By site, Auto ads: anchor ads only, bottom only); the page has no code for it.
 document.addEventListener('DOMContentLoaded', function () {
   var app = document.getElementById('app'), log = document.getElementById('log');
   if (!app || !log || !window.MutationObserver) return;
@@ -66,13 +66,6 @@ document.addEventListener('DOMContentLoaded', function () {
     return box;
   }
   function ask() { try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* blocked, or no slot to fill */ } }
-
-  // home: asked for once, the first time the home screen is up, and kept from then on
-  var home = unit('1211477950'), asked = false;
-  app.appendChild(home);
-  function homeUp() { if (!asked && app.classList.contains('is-home')) { asked = true; ask(); } }
-  new MutationObserver(homeUp).observe(app, { attributes: true, attributeFilter: ['class'] });
-  homeUp();
 
   // flight log: the game redraws the log for each finished flight, so each gets a new banner, at most one every 30 seconds
   var last = 0;
@@ -89,9 +82,6 @@ document.addEventListener('DOMContentLoaded', function () {
 .ff-ad { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; height: 0; overflow: hidden; }
 .ff-ad.is-filled { height: auto; margin-top: 28px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .ff-ad span { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #8d95b8; }
-#app > .ff-ad { display: none; }
-#app.is-home > .ff-ad { display: flex; }
-#app.is-home > .ff-ad.is-filled { margin-top: auto; }
 </style>
 EOF
 )
